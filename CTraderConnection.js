@@ -32,7 +32,6 @@ class CTraderConnection extends EventEmitter {
         this.maxReconnectAttempts = 10;
         this.reconnectDelay = 1000;
         this.reconnectTimeout = null;
-        this.isShuttingDown = false; // 新增：標記是否正在關機，防止自動重連
 
         this.heartbeatInterval = null;
         this.lastHeartbeat = Date.now();
@@ -93,21 +92,15 @@ class CTraderConnection extends EventEmitter {
                 console.log('✅ TLS 連線建立成功');
                 this.connected = true;
                 this.reconnectAttempts = 0;
-                this.isConnecting = false; 
-                
-                // 清理連線逾時計時器
-                if (this.connectionTimeoutHandle) {
-                    clearTimeout(this.connectionTimeoutHandle);
-                    this.connectionTimeoutHandle = null;
-                }
-
+                this.isConnecting = false; // 解鎖
+                // 發送 ApplicationAuth 請求
                 this.sendApplicationAuth()
                     .then(() => {
                         this.startHeartbeat();
                         resolve();
                     })
                     .catch((err) => {
-                        this.isConnecting = false; 
+                        this.isConnecting = false; // 失敗時解鎖
                         reject(err);
                     });
             });
@@ -125,24 +118,20 @@ class CTraderConnection extends EventEmitter {
                 this.connected = false;
                 this.authenticated = false;
                 this.stopHeartbeat();
-                this.isConnecting = false; 
-                
-                // 僅在非關機狀態下才嘗試重連
-                if (!this.isShuttingDown) {
-                    this.scheduleReconnect();
-                }
+                this.isConnecting = false; // 解鎖
+                this.scheduleReconnect();
             });
 
             this.socket.on('error', (error) => {
                 console.error('❌ Socket 錯誤:', error.message);
-                this.isConnecting = false; 
+                this.isConnecting = false; // 解鎖
                 reject(error);
             });
 
             // 連線逾時（10 秒）
-            this.connectionTimeoutHandle = setTimeout(() => {
+            setTimeout(() => {
                 if (!this.connected) {
-                    this.isConnecting = false; 
+                    this.isConnecting = false; // 解鎖
                     reject(new Error('連線逾時'));
                 }
             }, 10000);
@@ -374,20 +363,9 @@ class CTraderConnection extends EventEmitter {
 
     /** 排程重連 */
     scheduleReconnect() {
-        // 如果正在連線或已連線，跳過重連排程
-        if (this.isConnecting || this.connected) return;
-        
-        // 如果正在關機，不排程重連
-        if (this.isShuttingDown) return;
-
-        // 取消重連上限，進入無限重試模式
+        // 取消重連上限，進入無限重試模式，防止依賴進程重啟
         const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), MAX_RECONNECT_DELAY_MS);
         this.reconnectAttempts++;
-
-        // 避免重複排程
-        if (this.reconnectTimeout) {
-            clearTimeout(this.reconnectTimeout);
-        }
 
         console.log(`🔄 將在 ${delay}ms 後重連 (第 ${this.reconnectAttempts} 次嘗試)...`);
 
@@ -400,7 +378,6 @@ class CTraderConnection extends EventEmitter {
 
     /** 斷開連線 */
     disconnect() {
-        this.isShuttingDown = true; // 標記為關機，防止觸發重連
         this.connected = false;
         this.authenticated = false;
 
@@ -408,18 +385,9 @@ class CTraderConnection extends EventEmitter {
 
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
-            this.reconnectTimeout = null;
+        this.reconnectTimeout = null;
+        this.isConnecting = false; // 防止並行連線鎖
         }
-        this.isConnecting = false; 
-
-        if (this.socket) {
-            this.socket.destroy();
-            this.socket = null;
-        }
-
-        console.log('👋 已斷開 cTrader 連線');
-    }
-
 
         if (this.socket) {
             this.socket.destroy();

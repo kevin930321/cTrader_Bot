@@ -53,10 +53,7 @@ class ExecutionEngine extends EventEmitter {
         this.lastReportProfit = 0;
 
         this.symbolInfoCache = {};
-        this.closedPositionIds = new Set(); 
-
-        // 狀態保存隊列
-        this.saveStatePromise = Promise.resolve();
+        this.closedPositionIds = new Set(); // 去重：防止同一筆平倉被重複計算勝負
 
         this.connection.on('message', this.handleMarketData.bind(this));
         this.connection.on('account-auth-success', () => {
@@ -617,28 +614,30 @@ class ExecutionEngine extends EventEmitter {
      */
     isWithinTradingHours() {
         const now = new Date();
-        const isDst = isUsDst(now);
-        const marketConfig = isDst ? this.config.market.summer : this.config.market.winter;
-        
-        const { hour, minute } = getTaipeiHourMinute(now);
+
+        // 使用台北時區 (UTC+8) 計算時間，避免伺服器時區問題
+        const taipeiTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+        const hour = taipeiTime.getHours();
+        const minute = taipeiTime.getMinutes();
         const currentMinutes = hour * 60 + minute;
 
-        const openMinutes = marketConfig.openHour * 60 + marketConfig.openMinute;
-        // 這裡我們遵循 config 的開盤時間，若需要 06:30/07:30，請修改 config.js
-        
+        // 判斷夏令/冬令
+        const isDst = isUsDst(now);
+
+        // 冬令時間：台北時間 07:30 - 隔天 06:00 (即 07:30-23:59 和 00:00-06:00)
+        // 夏令時間：台北時間 06:30 - 隔天 05:00 (即 06:30-23:59 和 00:00-05:00)
+        const openMinutes = isDst ? (6 * 60 + 30) : (7 * 60 + 30);  // 夏令 06:30，冬令 07:30
+        const closeMinutes = isDst ? (5 * 60) : (6 * 60);           // 夏令 05:00，冬令 06:00
+
         // 交易時段跨越午夜
-        // 有效時段：開盤時間 ~ 23:59 或 00:00 ~ 收盤時間 (假定收盤是開盤前 1 小時)
-        // 為了穩定，我們簡單定義：只要在開盤時間之後，或在次日開盤前，都視為交易時段
-        // 實務上 cTrader 會在收盤時斷連，所以這裡只要判斷是否在開盤後即可
+        // 有效時段：開盤時間 ~ 23:59 或 00:00 ~ 收盤時間
         if (currentMinutes >= openMinutes) {
+            // 開盤後 (07:30+ 或 06:30+)
+            return true;
+        } else if (currentMinutes < closeMinutes) {
+            // 隔天未收盤前 (00:00 ~ 06:00 或 00:00 ~ 05:00)
             return true;
         }
-        
-        // 如果在開盤前 (例如 01:00)，只要還沒到次日開盤，我們視為前一交易日的延續
-        // 這部分實務上較少觸發，但為了完整性保留
-        return true; 
-    }
-
 
         return false;
     }
@@ -682,17 +681,31 @@ class ExecutionEngine extends EventEmitter {
         try {
             const tradeType = type === 'long' ? 'BUY' : 'SELL';
 
+            // 取得 Symbol 資訊以計算 Volume
             const symbolData = await this.getSymbolInfo(this.config.market.symbol);
             if (!symbolData) throw new Error('無法取得 Symbol 資訊');
 
+            // cTrader Volume 計算：
+            // - cTrader volume 單位: 1 lot = 100 volume units (centilots)
+            // - 所以 0.1 lots = 10 volume units
+            // - 最小 volume 通常是 100 (= 0.01 lots) 或根據 broker 設定
+
+            // 計算 volume (lots * 100)
             let volume = Math.round(this.lotSize * 100);
-            const minVolume = 10; 
+
+            // 最小量檢查 (0.01 lots = 1 volume, 但通常最小是 0.1 lots = 10 volume)
+            const minVolume = 10; // 0.1 lots = 10 volume units (大部分 broker 的最小)
             if (volume < minVolume) {
                 console.warn(`⚠️ 計算出的交易量 (${volume}) 小於最小限制 (${minVolume})，已自動修正為最小量。`);
                 volume = minVolume;
             }
 
+            console.log(`📊 下單量: ${this.lotSize} lots = ${volume} volume units`);
+
+            // 計算基於基準點的 TP/SL 絕對價格
+            // 策略：TP/SL 是相對於「基準點」而非「成交價」
             const openPriceReal = rawToRealPrice(this.todayOpenPrice);
+
             let tpPriceReal, slPriceReal;
             if (type === 'long') {
                 tpPriceReal = openPriceReal + this.longTP;
@@ -702,37 +715,44 @@ class ExecutionEngine extends EventEmitter {
                 slPriceReal = openPriceReal + this.shortSL;
             }
 
+            // 儲存待設定的 SL/TP（成交後才設定）
             this.pendingSlTp = {
                 type,
                 stopLoss: slPriceReal,
                 takeProfit: tpPriceReal
             };
 
+            // 發送訂單（不帶 SL/TP）
+            // 成交後在 handleExecutionEvent 中設定 SL/TP
             const ProtoOANewOrderReq = this.connection.proto.lookupType('ProtoOANewOrderReq');
             const order = ProtoOANewOrderReq.create({
                 ctidTraderAccountId: parseInt(this.config.ctrader.accountId),
                 symbolId: symbolData.symbolId,
-                orderType: 1, 
-                tradeSide: type === 'long' ? 1 : 2, 
+                orderType: 1, // MARKET
+                tradeSide: type === 'long' ? 1 : 2, // BUY=1, SELL=2
                 volume: volume,
+                // 不帶 SL/TP，成交後設定
                 label: 'US30_MR'
             });
 
             const currentPriceReal = rawToRealPrice(this.currentPrice);
             console.log(`${type === 'long' ? '📈' : '📉'} 開${type === 'long' ? '多' : '空'} | Price: ${currentPriceReal.toFixed(2)} | 目標TP: ${tpPriceReal.toFixed(2)} | 目標SL: ${slPriceReal.toFixed(2)}`);
 
-            await this.connection.send('ProtoOANewOrderReq', order);
-            console.log('📨 訂單發送成功，等待執行...');
+            const response = await this.connection.send('ProtoOANewOrderReq', order);
 
+            console.log('📨 訂單發送成功，等待執行（SL/TP 將在成交後設定）...');
+
+            // 發送 Discord 通知
             this.emit('trade-opened', {
                 type,
                 price: this.currentPrice,
                 tp: tpPriceReal,
                 sl: slPriceReal,
-                baselinePrice: rawToRealPrice(this.todayOpenPrice),
-                positionId: null 
+                baselinePrice: rawToRealPrice(this.todayOpenPrice), // Add baseline price for Risk Agent
+                positionId: null // positionId is not available yet, will be updated in order-filled if needed, or Risk Agent waits for order-filled
             });
 
+            // 審計日誌
             logAudit('OPEN_POSITION', {
                 type,
                 price: currentPriceReal,
@@ -744,10 +764,9 @@ class ExecutionEngine extends EventEmitter {
         } catch (error) {
             console.error('❌ 開倉失敗:', error);
             this.emit('trade-error', error);
-            // 失敗時清空 pending SL/TP
-            this.pendingSlTp = null;
         } finally {
             this.isPlacingOrder = false;
+            // 無論成功或失敗，都關閉盯盤狀態，防止重複下單
             this.isWatching = false;
             console.log('🔒 盯盤狀態已關閉（已嘗試下單）');
         }
@@ -799,33 +818,30 @@ class ExecutionEngine extends EventEmitter {
      * 儲存狀態到資料庫
      */
     async saveState() {
-        this.saveStatePromise = this.saveStatePromise.then(async () => {
-            try {
-                const state = {
-                    wins: this.wins,
-                    losses: this.losses,
-                    trades: this.trades,
-                    todayTradeDone: this.todayTradeDone,
-                    lastResetDate: this.lastResetDate,
-                    config: {
-                        entryOffset: this.entryOffset,
-                        longTP: this.longTP,
-                        shortTP: this.shortTP,
-                        longSL: this.longSL,
-                        shortSL: this.shortSL,
-                        lotSize: this.lotSize,
-                        minsAfterOpen: this.minsAfterOpen,
-                        baselineOffsetMinutes: this.baselineOffsetMinutes
-                    },
-                    lastUpdate: new Date()
-                };
+        try {
+            const state = {
+                wins: this.wins,
+                losses: this.losses,
+                trades: this.trades,
+                todayTradeDone: this.todayTradeDone,
+                lastResetDate: this.lastResetDate,
+                config: {
+                    entryOffset: this.entryOffset,
+                    longTP: this.longTP,
+                    shortTP: this.shortTP,
+                    longSL: this.longSL,
+                    shortSL: this.shortSL,
+                    lotSize: this.lotSize,
+                    minsAfterOpen: this.minsAfterOpen,
+                    baselineOffsetMinutes: this.baselineOffsetMinutes
+                },
+                lastUpdate: new Date()
+            };
 
-                await this.db.saveState(state);
-            } catch (error) {
-                console.error('❌ 儲存狀態失敗:', error);
-            }
-        });
-        return this.saveStatePromise;
+            await this.db.saveState(state);
+        } catch (error) {
+            console.error('❌ 儲存狀態失敗:', error);
+        }
     }
     async fetchDailyOpenPrice() {
         const offsetMinutes = this.baselineOffsetMinutes || 0;
@@ -1087,20 +1103,25 @@ class ExecutionEngine extends EventEmitter {
     checkIfBaselineTimeReached() {
         const offsetMinutes = this.baselineOffsetMinutes || 0;
         const now = new Date();
-        const { hour, minute } = getTaipeiHourMinute(now);
-        const currentTotalMinutes = hour * 60 + minute;
-
         const isDst = isUsDst(now);
         const marketConfig = isDst ? this.config.market.summer : this.config.market.winter;
+
+        // 計算當前台北時間
+        const taipeiTimeStr = now.toLocaleString("en-US", { timeZone: "Asia/Taipei" });
+        const taipeiTime = new Date(taipeiTimeStr);
+        const currentHour = taipeiTime.getHours();
+        const currentMinute = taipeiTime.getMinutes();
+        const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+        // 計算基準點時間 (開盤時間 + 偏移)
         const baselineTotalMinutes = marketConfig.openHour * 60 + marketConfig.openMinute + offsetMinutes;
 
-        // 判斷是否在基準點時間的 2 分鐘內，且今天尚未成功抓過基準價
+        // 判斷當前時間是否在基準點時間的 2 分鐘內
+        // 這樣可以確保在基準點時間前後都能觸發清空
         const isWithinBaselineWindow = currentTotalMinutes >= baselineTotalMinutes &&
             currentTotalMinutes < baselineTotalMinutes + 2;
-        
-        // 只有在 baseline 為空，或-在 window 內且我們想強制刷新-時才回傳 true
-        // 為了避免反覆刷新，建議增加一個標記
-        return isWithinBaselineWindow && (this.todayOpenPrice === null);
+
+        return isWithinBaselineWindow;
     }
 
     /**
@@ -1188,30 +1209,14 @@ class ExecutionEngine extends EventEmitter {
      * 更新策略參數（從 Dashboard）
      */
     updateConfig(newConfig) {
-        if (newConfig.entryOffset !== undefined && !isNaN(parseFloat(newConfig.entryOffset))) {
-            this.entryOffset = parseFloat(newConfig.entryOffset);
-        }
-        if (newConfig.longTP !== undefined && !isNaN(parseFloat(newConfig.longTP))) {
-            this.longTP = parseFloat(newConfig.longTP);
-        }
-        if (newConfig.shortTP !== undefined && !isNaN(parseFloat(newConfig.shortTP))) {
-            this.shortTP = parseFloat(newConfig.shortTP);
-        }
-        if (newConfig.longSL !== undefined && !isNaN(parseFloat(newConfig.longSL))) {
-            this.longSL = parseFloat(newConfig.longSL);
-        }
-        if (newConfig.shortSL !== undefined && !isNaN(parseFloat(newConfig.shortSL))) {
-            this.shortSL = parseFloat(newConfig.shortSL);
-        }
-        if (newConfig.lotSize !== undefined && !isNaN(parseFloat(newConfig.lotSize))) {
-            this.lotSize = parseFloat(newConfig.lotSize);
-        }
-        if (newConfig.minsAfterOpen !== undefined && !isNaN(parseInt(newConfig.minsAfterOpen))) {
-            this.minsAfterOpen = parseInt(newConfig.minsAfterOpen);
-        }
-        if (newConfig.baselineOffsetMinutes !== undefined && !isNaN(parseInt(newConfig.baselineOffsetMinutes))) {
-            this.baselineOffsetMinutes = parseInt(newConfig.baselineOffsetMinutes);
-        }
+        if (newConfig.entryOffset !== undefined) this.entryOffset = parseFloat(newConfig.entryOffset);
+        if (newConfig.longTP !== undefined) this.longTP = parseFloat(newConfig.longTP);
+        if (newConfig.shortTP !== undefined) this.shortTP = parseFloat(newConfig.shortTP);
+        if (newConfig.longSL !== undefined) this.longSL = parseFloat(newConfig.longSL);
+        if (newConfig.shortSL !== undefined) this.shortSL = parseFloat(newConfig.shortSL);
+        if (newConfig.lotSize !== undefined) this.lotSize = parseFloat(newConfig.lotSize);
+        if (newConfig.minsAfterOpen !== undefined) this.minsAfterOpen = parseInt(newConfig.minsAfterOpen);
+        if (newConfig.baselineOffsetMinutes !== undefined) this.baselineOffsetMinutes = parseInt(newConfig.baselineOffsetMinutes);
 
         console.log('⚙️ 策略參數已更新');
         this.saveState();
