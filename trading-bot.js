@@ -13,7 +13,7 @@ const config = require('./config');
 const CTraderConnection = require('./CTraderConnection');
 const ExecutionEngine = require('./ExecutionEngine');
 const db = require('./db');
-const { isUsDst, rawToRealPrice } = require('./utils');
+const { isUsDst, rawToRealPrice, getTaipeiHourMinute } = require('./utils');
 const TokenManager = require('./tokenManager');
 
 class TradingBot {
@@ -29,6 +29,7 @@ class TradingBot {
 
     /** 停止機器人 */
     async stop() {
+        console.log('🛑 正在停止機器人...');
         if (this.engine) {
             this.engine.stopBaselinePricePolling();
         }
@@ -297,20 +298,17 @@ class TradingBot {
     async checkTime() {
         // --- 連線看門狗 (Connection Watchdog) ---
         // 防止週末維護導致斷線後，週一無法自動恢復
-        if (this.connection && !this.connection.connected && !this.connection.reconnectTimeout) {
-            console.log('🐕 看門狗偵測到連線中斷，嘗試復活...');
+        if (this.connection && !this.connection.connected && !this.connection.reconnectTimeout && !this.connection.isConnecting) {
+            console.log('🐕 看門狗偵測到連線中斷且無重連排程，嘗試復活...');
             this.connection.connect().catch(err => console.error('看門狗重連失敗:', err.message));
         }
 
         const target = this.getTargetWatchTime();
         const isDst = target.isDst;
 
-        const taipeiTimeStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" });
-        const taipeiTime = new Date(taipeiTimeStr);
-        const hour = taipeiTime.getHours();
-        const minute = taipeiTime.getMinutes();
-        const today = taipeiTime.toDateString();
-        const dayOfWeek = taipeiTime.getDay();
+        const { hour, minute } = getTaipeiHourMinute(new Date());
+        const today = new Date().toDateString(); //’ simplified as we only need the date string
+        const dayOfWeek = new Date().getDay();
 
         // 週末處理：仍需檢查是否需要重置狀態，但不啟動盯盤
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -470,22 +468,23 @@ cron.schedule('0,30 * * * * *', async () => {
     }
 });
 
-// 訊號處理
-process.on('SIGINT', () => {
-    console.log('\n👋 機器人關閉中 (SIGINT)...');
-    if (bot.connection) {
-        bot.connection.disconnect();
+/** 統一關機流程 */
+async function shutdown(signal) {
+    console.log(`\n👋 收到 ${signal}，正在安全關閉...`);
+    try {
+        await bot.stop();
+        const db = require('./db');
+        await db.closeDB();
+        console.log('✅ 所有資源已釋放');
+    } catch (error) {
+        console.error('❌ 關機時發生錯誤:', error);
+    } finally {
+        process.exit(0);
     }
-    process.exit(0);
-});
+}
 
-process.on('SIGTERM', () => {
-    console.log('\n👋 機器人關閉中 (SIGTERM)...');
-    if (bot.connection) {
-        bot.connection.disconnect();
-    }
-    process.exit(0);
-});
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Express Web Dashboard
 const app = express();
