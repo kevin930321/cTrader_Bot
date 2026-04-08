@@ -420,15 +420,6 @@ class CTraderConnection extends EventEmitter {
         console.log('👋 已斷開 cTrader 連線');
     }
 
-
-        if (this.socket) {
-            this.socket.destroy();
-            this.socket = null;
-        }
-
-        console.log('👋 已斷開 cTrader 連線');
-    }
-
     /** 檢查連線是否健康 */
     isHealthy() {
         if (!this.connected || !this.socket) return false;

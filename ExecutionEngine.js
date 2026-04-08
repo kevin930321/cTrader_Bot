@@ -4,7 +4,7 @@
  */
 
 const EventEmitter = require('events');
-const { convertLongValue, rawToRealPrice, realToRawPrice, getTaipeiTime, isUsDst, API_PRICE_MULTIPLIER, TAIPEI_OFFSET_MS } = require('./utils');
+const { convertLongValue, rawToRealPrice, realToRawPrice, getTaipeiTime, getTaipeiHourMinute, isUsDst, API_PRICE_MULTIPLIER, TAIPEI_OFFSET_MS } = require('./utils');
 const { tradeLogger, logAudit } = require('./logger');
 const { OrderError, MarketDataError } = require('./errors');
 
@@ -637,10 +637,6 @@ class ExecutionEngine extends EventEmitter {
         // 如果在開盤前 (例如 01:00)，只要還沒到次日開盤，我們視為前一交易日的延續
         // 這部分實務上較少觸發，但為了完整性保留
         return true; 
-    }
-
-
-        return false;
     }
 
     /**

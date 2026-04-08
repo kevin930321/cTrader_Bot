@@ -65,6 +65,7 @@ module.exports = {
     rawToRealPrice,
     realToRawPrice,
     getTaipeiTime,
+    getTaipeiHourMinute,
     getTaipeiDateString,
     isUsDst
 };
