@@ -65,9 +65,18 @@ class CTraderConnection extends EventEmitter {
 
     /** 連接到 cTrader 伺服器 */
     async connect() {
+        if (this.isConnecting) {
+            console.log('⏳ 連線請求正在處理中，跳過重複請求...');
+            return;
+        }
+
         if (!this.proto) {
             await this.loadProto();
         }
+
+        // 確保每次嘗試連線前先徹底清理舊連線
+        this.disconnect();
+        this.isConnecting = true;
 
         return new Promise((resolve, reject) => {
             const { host, port } = this.config.ctrader;
@@ -83,13 +92,17 @@ class CTraderConnection extends EventEmitter {
                 console.log('✅ TLS 連線建立成功');
                 this.connected = true;
                 this.reconnectAttempts = 0;
+                this.isConnecting = false; // 解鎖
                 // 發送 ApplicationAuth 請求
                 this.sendApplicationAuth()
                     .then(() => {
                         this.startHeartbeat();
                         resolve();
                     })
-                    .catch(reject);
+                    .catch((err) => {
+                        this.isConnecting = false; // 失敗時解鎖
+                        reject(err);
+                    });
             });
 
             this.socket.on('data', (data) => {
@@ -105,17 +118,20 @@ class CTraderConnection extends EventEmitter {
                 this.connected = false;
                 this.authenticated = false;
                 this.stopHeartbeat();
+                this.isConnecting = false; // 解鎖
                 this.scheduleReconnect();
             });
 
             this.socket.on('error', (error) => {
                 console.error('❌ Socket 錯誤:', error.message);
+                this.isConnecting = false; // 解鎖
                 reject(error);
             });
 
             // 連線逾時（10 秒）
             setTimeout(() => {
                 if (!this.connected) {
+                    this.isConnecting = false; // 解鎖
                     reject(new Error('連線逾時'));
                 }
             }, 10000);
@@ -207,6 +223,13 @@ class CTraderConnection extends EventEmitter {
 
             const messageLength = this.incomingBuffer.readUInt32BE(offset);
 
+            // 封包長度安全檢查：防止畸形封包導致 CPU 飆高或記憶體溢出 (上限 1MB)
+            if (messageLength > 1024 * 1024 || messageLength < 0) {
+                console.error(`❌ 收到異常封包長度: ${messageLength}，清除緩衝區以防止崩潰`);
+                this.incomingBuffer = Buffer.alloc(0);
+                return;
+            }
+
             // 檢查完整訊息是否已到達
             if (this.incomingBuffer.length - offset < 4 + messageLength) break;
 
@@ -274,17 +297,12 @@ class CTraderConnection extends EventEmitter {
                 console.error(`   詳細: ${JSON.stringify(errorPayload)}`);
                 this.emit('api-error', errorPayload);
 
-                // 自動重連機制：當偵測到帳戶未授權錯誤時，自動重新連線
+                // 自動重連機制：當偵測到帳戶未授權錯誤時，統一進入排程重連流程
                 if (errorPayload.description && errorPayload.description.includes('not authorized')) {
-                    console.log('🔄 偵測到授權錯誤，5 秒後自動重新連線...');
+                    console.log('🔄 偵測到授權錯誤，將進入重連流程...');
                     this.authenticated = false;
-                    setTimeout(() => {
-                        console.log('🔄 正在重新連線...');
-                        this.disconnect();
-                        this.connect().catch(err => {
-                            console.error('❌ 自動重連失敗:', err.message);
-                        });
-                    }, 5000);
+                    this.disconnect();
+                    this.scheduleReconnect();
                 }
                 break;
 
@@ -345,12 +363,7 @@ class CTraderConnection extends EventEmitter {
 
     /** 排程重連 */
     scheduleReconnect() {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('❌ 重連次數已達上限，停止重連');
-            this.emit('reconnect-failed');
-            return;
-        }
-
+        // 取消重連上限，進入無限重試模式，防止依賴進程重啟
         const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), MAX_RECONNECT_DELAY_MS);
         this.reconnectAttempts++;
 
@@ -372,7 +385,8 @@ class CTraderConnection extends EventEmitter {
 
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
-            this.reconnectTimeout = null;
+        this.reconnectTimeout = null;
+        this.isConnecting = false; // 防止並行連線鎖
         }
 
         if (this.socket) {

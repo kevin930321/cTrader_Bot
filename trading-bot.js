@@ -27,6 +27,20 @@ class TradingBot {
         console.log('🤖 US30 真實交易機器人初始化...');
     }
 
+    /** 停止機器人 */
+    async stop() {
+        if (this.engine) {
+            this.engine.stopBaselinePricePolling();
+        }
+        if (this.connection) {
+            this.connection.disconnect();
+        }
+        if (this.tokenManager) {
+            this.tokenManager.stopAutoRefresh();
+        }
+        console.log('🛑 機器人已停止');
+    }
+
     /** 初始化機器人 */
     async init() {
         try {
