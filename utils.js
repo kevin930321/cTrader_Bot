@@ -32,6 +32,16 @@ function getTaipeiDateString(date = new Date()) {
     return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
+// 取得台北時間的時/分 (用於時段判定)
+function getTaipeiHourMinute(date = new Date()) {
+    const taipeiStr = date.toLocaleString('en-US', { timeZone: 'Asia/Taipei' });
+    const taipeiDate = new Date(taipeiStr);
+    return {
+        hour: taipeiDate.getHours(),
+        minute: taipeiDate.getMinutes()
+    };
+}
+
 // 判斷美股夏令時間 (DST: 3月第2週日 ~ 11月第1週日)
 function isUsDst(date) {
     const year = date.getFullYear();
