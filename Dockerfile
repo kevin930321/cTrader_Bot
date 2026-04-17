@@ -1,13 +1,7 @@
-FROM node:18-slim
-
+FROM node:20-alpine
 WORKDIR /app
-
-COPY package.json ./
-RUN apt-get update && apt-get install -y tzdata && npm install --production
-
+COPY package*.json ./
+RUN npm install --omit=dev
 COPY . .
-
-# 設置時區為 Asia/Taipei
-ENV TZ=Asia/Taipei
-
-CMD ["node", "trading-bot.js"]
+EXPOSE 3000
+CMD ["node", "index.js"]
