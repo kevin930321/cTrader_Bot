@@ -1,7 +1,7 @@
 module.exports = {
     apps: [{
         name: "nas100-bot",
-        script: "./trading-bot.js",
+        script: "./src/index.js",
         watch: false,
         max_memory_restart: "1G",
         env: {
