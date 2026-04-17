@@ -1,61 +1,52 @@
-/**
- * NAS100 Bot - 共用工具函數
- */
+'use strict';
 
-const API_PRICE_MULTIPLIER = 100000;
-const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const API_PRICE_MULTIPLIER = 100_000;
 
-// 轉換 Protobuf Long 物件為 JavaScript Number
+/** 轉換 Protobuf Long 物件為 JavaScript Number */
 function convertLongValue(value) {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'object' && value.toNumber) return value.toNumber();
+    if (value == null) return null;
+    if (typeof value === 'object' && typeof value.toNumber === 'function') return value.toNumber();
     return typeof value === 'number' ? value : Number(value);
 }
 
-// Raw Price (API) -> 真實價格
-function rawToRealPrice(rawPrice) {
-    return rawPrice / API_PRICE_MULTIPLIER;
+const rawToRealPrice = (raw) => raw / API_PRICE_MULTIPLIER;
+const realToRawPrice = (real) => real * API_PRICE_MULTIPLIER;
+
+/** 取得台北時間 Date 物件 */
+function getTaipeiTime(date = new Date()) {
+    return new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
 }
 
-// 真實價格 -> Raw Price (API)
-function realToRawPrice(realPrice) {
-    return realPrice * API_PRICE_MULTIPLIER;
-}
-
-// 取得台北時間
-function getTaipeiTime() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-}
-
-// 取得台北時間日期字串 (YYYY-MM-DD)
+/** YYYY-MM-DD 台北時間日期字串 */
 function getTaipeiDateString(date = new Date()) {
     return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
-// 判斷美股夏令時間 (DST: 3月第2週日 ~ 11月第1週日)
-function isUsDst(date) {
-    const year = date.getFullYear();
+/**
+ * 判斷是否為美股夏令時間
+ * DST: 3月第2個週日 ~ 11月第1個週日
+ */
+function isUsDst(date = new Date()) {
+    const y = date.getFullYear();
 
-    // 3月第2個週日
-    let dstStart = new Date(year, 2, 1);
-    while (dstStart.getDay() !== 0) dstStart.setDate(dstStart.getDate() + 1);
-    dstStart.setDate(dstStart.getDate() + 7);
+    const nthSunday = (month, n) => {
+        const d = new Date(y, month, 1);
+        while (d.getDay() !== 0) d.setDate(d.getDate() + 1);
+        d.setDate(d.getDate() + (n - 1) * 7);
+        return d;
+    };
 
-    // 11月第1個週日
-    let dstEnd = new Date(year, 10, 1);
-    while (dstEnd.getDay() !== 0) dstEnd.setDate(dstEnd.getDate() + 1);
-
+    const dstStart = nthSunday(2, 2); // March 2nd Sunday
+    const dstEnd   = nthSunday(10, 1); // November 1st Sunday
     return date >= dstStart && date < dstEnd;
 }
 
 module.exports = {
     API_PRICE_MULTIPLIER,
-    TAIPEI_OFFSET_MS,
     convertLongValue,
     rawToRealPrice,
     realToRawPrice,
     getTaipeiTime,
     getTaipeiDateString,
-    isUsDst
+    isUsDst,
 };
-
