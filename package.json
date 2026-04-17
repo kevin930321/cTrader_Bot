@@ -2,10 +2,10 @@
   "name": "us30-trading-bot",
   "version": "1.0.0",
   "description": "US30 均值回歸交易機器人",
-  "main": "src/index.js",
+  "main": "trading-bot.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node src/index.js"
+    "start": "node trading-bot.js",
+    "dev": "node trading-bot.js"
   },
   "dependencies": {
     "ws": "^8.13.0",
@@ -16,8 +16,7 @@
     "dotenv": "^16.3.1",
     "socket.io": "^4.7.4",
     "pino": "^8.17.0",
-    "pino-pretty": "^10.3.0",
-    "zod": "^3.23.8"
+    "pino-pretty": "^10.3.0"
   },
   "engines": {
     "node": ">=18.0.0"
