@@ -1,11 +1,11 @@
 {
   "name": "us30-trading-bot",
-  "version": "2.0.0",
-  "description": "US30 均值回歸交易機器人 (重構版)",
-  "main": "index.js",
+  "version": "1.0.0",
+  "description": "US30 均值回歸交易機器人",
+  "main": "trading-bot.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node trading-bot.js",
+    "dev": "node trading-bot.js"
   },
   "dependencies": {
     "ws": "^8.13.0",

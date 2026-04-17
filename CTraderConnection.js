@@ -1,194 +1,284 @@
-'use strict';
+/**
+ * CTraderConnection - cTrader Open API 連線管理
+ */
 
-const tls          = require('tls');
-const protobuf     = require('protobufjs');
-const path         = require('path');
+const net = require('net');
+const tls = require('tls');
+const protobuf = require('protobufjs');
+const path = require('path');
 const EventEmitter = require('events');
+const { apiLogger } = require('./logger');
+const { ConnectionError } = require('./errors');
 
-// ── Tunables ──────────────────────────────────────────────────────────────────
-const CONNECT_TIMEOUT_MS  =  10_000;
-const REQUEST_TIMEOUT_MS  =  30_000;
-const HEARTBEAT_INTERVAL  =  10_000;
-const HEARTBEAT_TIMEOUT   =  30_000;
-const MAX_RECONNECT_DELAY =  60_000;
-const MAX_PACKET_BYTES    = 1_048_576; // 1 MB
-
-const PROTO_FILES = [
-    'OpenApiCommonMessages.proto',
-    'OpenApiCommonModelMessages.proto',
-    'OpenApiMessages.proto',
-    'OpenApiModelMessages.proto',
-].map(f => path.join(__dirname, 'proto', f));
-
-// Messages we don't need to log on every tick
-const QUIET_TYPES = new Set(['ProtoOASpotEvent', 'ProtoHeartbeatEvent', 'ProtoOATraderRes', 'ProtoOAReconcileRes']);
+const CONNECTION_TIMEOUT_MS = 10000;
+const REQUEST_TIMEOUT_MS = 30000;
+const HEARTBEAT_INTERVAL_MS = 10000;
+const HEARTBEAT_TIMEOUT_MS = 30000;
+const MAX_RECONNECT_DELAY_MS = 60000;
+const CLEANUP_INTERVAL_MS = 60000;
 
 class CTraderConnection extends EventEmitter {
     constructor(config, tokenManager = null) {
         super();
-        this.config       = config;
-        this.tokenManager = tokenManager;
 
-        this.socket           = null;
-        this.proto            = null;
-        this.connected        = false;
-        this.authenticated    = false;
-        this.isConnecting     = false;
+        this.config = config;
+        this.tokenManager = tokenManager;
+        this.socket = null;
+        this.proto = null;
+        this.connected = false;
+        this.authenticated = false;
 
         this.reconnectAttempts = 0;
-        this.reconnectDelay    = 1_000;
-        this.reconnectTimer    = null;
+        this.maxReconnectAttempts = 10;
+        this.reconnectDelay = 1000;
+        this.reconnectTimeout = null;
 
-        this.heartbeatTimer    = null;
-        this.lastHeartbeat     = Date.now();
+        this.heartbeatInterval = null;
+        this.lastHeartbeat = Date.now();
 
-        this.pendingRequests   = new Map();
-        this.nextMsgId         = 1;
-        this.rxBuffer          = Buffer.alloc(0);
+        this.messageQueue = [];
+        this.pendingRequests = new Map();
+        this.nextClientMsgId = 1;
+        this.incomingBuffer = Buffer.alloc(0);
     }
 
-    // ── Proto ─────────────────────────────────────────────────────────────────
-
+    /** 載入 Protobuf 定義檔 */
     async loadProto() {
-        this.proto = await protobuf.load(PROTO_FILES);
-        console.log('✅ Protobuf 定義檔載入成功');
+        try {
+            // 同時載入所有定義，確保能處理 Heartbeat 與 Model
+            const protoFiles = [
+                path.join(__dirname, 'proto', 'OpenApiCommonMessages.proto'),
+                path.join(__dirname, 'proto', 'OpenApiCommonModelMessages.proto'),
+                path.join(__dirname, 'proto', 'OpenApiMessages.proto'),
+                path.join(__dirname, 'proto', 'OpenApiModelMessages.proto')
+            ];
+
+            this.proto = await protobuf.load(protoFiles);
+            console.log('✅ Protobuf 定義檔載入成功 (含 Heartbeat)');
+            return true;
+        } catch (error) {
+            console.error('❌ Protobuf 載入失敗:', error.message);
+            console.error('請確認 proto/ 目錄下存在 OpenApiCommonMessages.proto 與 OpenApiMessages.proto');
+            throw error;
+        }
     }
 
-    // ── Connect ───────────────────────────────────────────────────────────────
-
+    /** 連接到 cTrader 伺服器 */
     async connect() {
-        if (this.isConnecting) { console.log('⏳ 連線請求進行中，略過重複請求'); return; }
-        if (!this.proto) await this.loadProto();
+        if (this.isConnecting) {
+            console.log('⏳ 連線請求正在處理中，跳過重複請求...');
+            return;
+        }
+
+        if (!this.proto) {
+            await this.loadProto();
+        }
+
+        // 確保每次嘗試連線前先徹底清理舊連線
         this.disconnect();
         this.isConnecting = true;
 
-        const { host, port, mode } = this.config.ctrader;
-        console.log(`📡 連接 cTrader ${mode} 伺服器 ${host}:${port}...`);
-
         return new Promise((resolve, reject) => {
-            const done = (err) => { this.isConnecting = false; err ? reject(err) : resolve(); };
+            const { host, port } = this.config.ctrader;
 
-            this.socket = tls.connect({ host, port, rejectUnauthorized: true }, async () => {
-                console.log('✅ TLS 連線建立');
-                this.connected         = true;
+            console.log(`📡 正在連接 cTrader ${this.config.ctrader.mode} 伺服器...`);
+            console.log(`   Host: ${host}:${port}`);
+
+            this.socket = tls.connect({
+                host: host,
+                port: port,
+                rejectUnauthorized: true
+            }, () => {
+                console.log('✅ TLS 連線建立成功');
+                this.connected = true;
                 this.reconnectAttempts = 0;
-                try {
-                    await this.sendApplicationAuth();
-                    this._startHeartbeat();
-                    done();
-                } catch (e) { done(e); }
+                this.isConnecting = false; // 解鎖
+                // 發送 ApplicationAuth 請求
+                this.sendApplicationAuth()
+                    .then(() => {
+                        this.startHeartbeat();
+                        resolve();
+                    })
+                    .catch((err) => {
+                        this.isConnecting = false; // 失敗時解鎖
+                        reject(err);
+                    });
             });
 
-            this.socket.on('data',  data  => { try { this._onData(data); } catch (e) { console.error('❌ 處理訊息失敗:', e); } });
-            this.socket.on('close', ()    => { console.log('⚠️  TCP 連線關閉'); this._onClose(); });
-            this.socket.on('error', err   => { console.error('❌ Socket 錯誤:', err.message); this.isConnecting = false; reject(err); });
+            this.socket.on('data', (data) => {
+                try {
+                    this.handleIncomingData(data);
+                } catch (error) {
+                    console.error('❌ 處理訊息時發生錯誤:', error);
+                }
+            });
 
-            setTimeout(() => { if (!this.connected) done(new Error('連線逾時')); }, CONNECT_TIMEOUT_MS);
+            this.socket.on('close', () => {
+                console.log('⚠️ TCP 連線已關閉');
+                this.connected = false;
+                this.authenticated = false;
+                this.stopHeartbeat();
+                this.isConnecting = false; // 解鎖
+                this.scheduleReconnect();
+            });
+
+            this.socket.on('error', (error) => {
+                console.error('❌ Socket 錯誤:', error.message);
+                this.isConnecting = false; // 解鎖
+                reject(error);
+            });
+
+            // 連線逾時（10 秒）
+            setTimeout(() => {
+                if (!this.connected) {
+                    this.isConnecting = false; // 解鎖
+                    reject(new Error('連線逾時'));
+                }
+            }, 10000);
         });
     }
 
-    _onClose() {
-        this.connected     = false;
-        this.authenticated = false;
-        this.isConnecting  = false;
-        this._stopHeartbeat();
-        this._scheduleReconnect();
-    }
-
-    // ── Auth ──────────────────────────────────────────────────────────────────
-
+    /** 發送 Application Auth */
     async sendApplicationAuth() {
-        const msg = this.proto.lookupType('ProtoOAApplicationAuthReq').create({
-            clientId:     this.config.ctrader.clientId,
-            clientSecret: this.config.ctrader.clientSecret,
+        const ProtoOAApplicationAuthReq = this.proto.lookupType('ProtoOAApplicationAuthReq');
+        const message = ProtoOAApplicationAuthReq.create({
+            clientId: this.config.ctrader.clientId,
+            clientSecret: this.config.ctrader.clientSecret
         });
-        return this.send('ProtoOAApplicationAuthReq', msg);
+
+        return this.send('ProtoOAApplicationAuthReq', message);
     }
 
+    /** 發送 Account Auth */
     async sendAccountAuth() {
-        const token = this.tokenManager
+        // 優先使用 TokenManager 的動態 Token
+        const accessToken = this.tokenManager
             ? this.tokenManager.getAccessToken()
             : this.config.ctrader.accessToken;
 
-        const msg = this.proto.lookupType('ProtoOAAccountAuthReq').create({
+        const ProtoOAAccountAuthReq = this.proto.lookupType('ProtoOAAccountAuthReq');
+        const message = ProtoOAAccountAuthReq.create({
             ctidTraderAccountId: parseInt(this.config.ctrader.accountId),
-            accessToken: token,
+            accessToken: accessToken
         });
-        return this.send('ProtoOAAccountAuthReq', msg);
+
+        return this.send('ProtoOAAccountAuthReq', message);
     }
 
-    // ── Send / Receive ────────────────────────────────────────────────────────
+    /** 發送訊息（通用） */
+    async send(payloadType, payload) {
+        if (!this.socket || !this.connected) {
+            throw new Error('Socket 未連線');
+        }
 
-    async send(typeName, payload) {
-        if (!this.socket || !this.connected) throw new Error('Socket 未連線');
+        const clientMsgId = this.nextClientMsgId++;
 
-        const msgId    = (this.nextMsgId++).toString();
-        const ProtoMsg = this.proto.lookupType('ProtoMessage');
-        const wrapped  = ProtoMsg.create({
-            payloadType: this._typeNameToId(typeName),
-            payload:     this.proto.lookupType(typeName).encode(payload).finish(),
-            clientMsgId: msgId,
+        // 建立 ProtoMessage wrapper
+        const ProtoMessage = this.proto.lookupType('ProtoMessage');
+        const wrappedMessage = ProtoMessage.create({
+            payloadType: this.getPayloadTypeId(payloadType),
+            payload: this.proto.lookupType(payloadType).encode(payload).finish(),
+            clientMsgId: clientMsgId.toString()
         });
 
-        const encoded = ProtoMsg.encode(wrapped).finish();
-        const prefix  = Buffer.allocUnsafe(4);
-        prefix.writeUInt32BE(encoded.length, 0);
-        const packet = Buffer.concat([prefix, encoded]);
+        const buffer = ProtoMessage.encode(wrappedMessage).finish();
+
+        // cTrader 需要前綴長度（4 bytes, big-endian）
+        const lengthPrefix = Buffer.alloc(4);
+        lengthPrefix.writeUInt32BE(buffer.length, 0);
+
+        const packet = Buffer.concat([lengthPrefix, buffer]);
 
         return new Promise((resolve, reject) => {
-            this.pendingRequests.set(msgId, { resolve, reject, type: typeName });
-            this.socket.write(packet, err => {
-                if (err) { this.pendingRequests.delete(msgId); reject(err); }
+            this.pendingRequests.set(clientMsgId.toString(), { resolve, reject, type: payloadType });
+
+            this.socket.write(packet, (error) => {
+                if (error) {
+                    this.pendingRequests.delete(clientMsgId.toString());
+                    reject(error);
+                }
             });
+
+            // 超時處理
             setTimeout(() => {
-                if (this.pendingRequests.has(msgId)) {
-                    this.pendingRequests.delete(msgId);
-                    reject(new Error(`Request timeout: ${typeName}`));
+                if (this.pendingRequests.has(clientMsgId.toString())) {
+                    this.pendingRequests.delete(clientMsgId.toString());
+                    reject(new Error(`Request timeout: ${payloadType}`));
                 }
             }, REQUEST_TIMEOUT_MS);
         });
     }
 
-    _onData(chunk) {
-        this.rxBuffer = Buffer.concat([this.rxBuffer, chunk]);
+    /** 處理接收到的資料 */
+    handleIncomingData(data) {
+        // 將新資料追加到緩衝區
+        this.incomingBuffer = Buffer.concat([this.incomingBuffer, data]);
+
+        // cTrader 訊息格式: [4 bytes length][protobuf message]
         let offset = 0;
 
         while (true) {
-            if (this.rxBuffer.length - offset < 4) break;
-            const len = this.rxBuffer.readUInt32BE(offset);
-            if (len > MAX_PACKET_BYTES || len < 0) {
-                console.error(`❌ 異常封包長度 ${len}，清除緩衝區`);
-                this.rxBuffer = Buffer.alloc(0);
+            // 檢查是否至少有 4 bytes (長度前綴)
+            if (this.incomingBuffer.length - offset < 4) break;
+
+            const messageLength = this.incomingBuffer.readUInt32BE(offset);
+
+            // 封包長度安全檢查：防止畸形封包導致 CPU 飆高或記憶體溢出 (上限 1MB)
+            if (messageLength > 1024 * 1024 || messageLength < 0) {
+                console.error(`❌ 收到異常封包長度: ${messageLength}，清除緩衝區以防止崩潰`);
+                this.incomingBuffer = Buffer.alloc(0);
                 return;
             }
-            if (this.rxBuffer.length - offset < 4 + len) break;
 
-            const bytes = this.rxBuffer.subarray(offset + 4, offset + 4 + len);
-            offset += 4 + len;
+            // 檢查完整訊息是否已到達
+            if (this.incomingBuffer.length - offset < 4 + messageLength) break;
+
+            // 提取完整訊息
+            const messageBytes = this.incomingBuffer.subarray(offset + 4, offset + 4 + messageLength);
+            offset += (4 + messageLength);
+
             try {
-                const msg = this.proto.lookupType('ProtoMessage').decode(bytes);
-                this._onMessage(msg);
-            } catch (e) { console.error('❌ Protobuf 解碼失敗:', e); }
+                const ProtoMessage = this.proto.lookupType('ProtoMessage');
+                const message = ProtoMessage.decode(messageBytes);
+                this.handleMessage(message);
+            } catch (error) {
+                console.error('❌ Protobuf 解碼失敗:', error);
+            }
         }
 
-        if (offset > 0) this.rxBuffer = this.rxBuffer.subarray(offset);
+        // 移除已處理的資料，保留剩餘部分
+        if (offset > 0) {
+            this.incomingBuffer = this.incomingBuffer.subarray(offset);
+        }
     }
 
-    _onMessage(msg) {
+    /** 處理解碼後的訊息 */
+    handleMessage(message) {
+        // 收到任何訊息都視為連線活躍 (Heartbeat)
         this.lastHeartbeat = Date.now();
-        const typeName = this._typeIdToName(msg.payloadType);
 
-        if (!QUIET_TYPES.has(typeName)) console.log(`📨 收到訊息: ${typeName}`);
+        const payloadTypeName = this.getPayloadTypeName(message.payloadType);
 
-        // Resolve pending request
-        if (msg.clientMsgId && this.pendingRequests.has(msg.clientMsgId)) {
-            const { resolve } = this.pendingRequests.get(msg.clientMsgId);
-            this.pendingRequests.delete(msg.clientMsgId);
-            resolve(msg);
+        // 過濾掉頻繁的訊息，避免 log 洗版
+        const quietMessages = [
+            'ProtoOASpotEvent',
+            'ProtoHeartbeatEvent',
+            'ProtoOATraderRes',
+            'ProtoOAReconcileRes'
+        ];
+        if (!quietMessages.includes(payloadTypeName)) {
+            console.log(`📨 收到訊息: ${payloadTypeName}`);
         }
 
-        // Special handling
-        switch (typeName) {
+        // 處理回應
+        if (message.clientMsgId && this.pendingRequests.has(message.clientMsgId)) {
+            const { resolve } = this.pendingRequests.get(message.clientMsgId);
+            this.pendingRequests.delete(message.clientMsgId);
+            resolve(message);
+        }
+
+        // 特殊訊息處理
+        switch (payloadTypeName) {
             case 'ProtoOAApplicationAuthRes':
                 console.log('✅ Application Auth 成功');
                 this.emit('app-auth-success');
@@ -200,121 +290,197 @@ class CTraderConnection extends EventEmitter {
                 this.emit('account-auth-success');
                 break;
 
-            case 'ProtoOAErrorRes': {
-                const err = this.proto.lookupType('ProtoOAErrorRes').decode(msg.payload);
-                console.error(`❌ API 錯誤: ${err.errorCode} – ${err.description || '無描述'}`);
-                this.emit('api-error', err);
-                if (err.description?.includes('not authorized')) {
+            case 'ProtoOAErrorRes':
+                const ErrorRes = this.proto.lookupType('ProtoOAErrorRes');
+                const errorPayload = ErrorRes.decode(message.payload);
+                console.error(`❌ API 錯誤: Code=${errorPayload.errorCode}, Desc=${errorPayload.description || '無描述'}, Maintenance=${errorPayload.maintenanceEndTimestamp || 'N/A'}`);
+                console.error(`   詳細: ${JSON.stringify(errorPayload)}`);
+                this.emit('api-error', errorPayload);
+
+                // 自動重連機制：當偵測到帳戶未授權錯誤時，統一進入排程重連流程
+                if (errorPayload.description && errorPayload.description.includes('not authorized')) {
+                    console.log('🔄 偵測到授權錯誤，將進入重連流程...');
                     this.authenticated = false;
                     this.disconnect();
-                    this._scheduleReconnect();
+                    this.scheduleReconnect();
                 }
                 break;
-            }
 
-            case 'ProtoOAOrderErrorEvent': {
-                const oe = this.proto.lookupType('ProtoOAOrderErrorEvent').decode(msg.payload);
-                console.error(`❌ 訂單錯誤: ${oe.errorCode} – ${oe.description || '無描述'}`);
-                this.emit('order-error', oe);
+            case 'ProtoOAOrderErrorEvent':
+                const OrderErrorEvent = this.proto.lookupType('ProtoOAOrderErrorEvent');
+                const orderError = OrderErrorEvent.decode(message.payload);
+                console.error(`❌ 訂單錯誤: ${orderError.errorCode} - ${orderError.description || '無描述'}`);
+                this.emit('order-error', orderError);
                 break;
-            }
 
             case 'ProtoHeartbeatEvent':
-                // timestamp already updated above
+                this.lastHeartbeat = Date.now();
                 break;
         }
 
-        this.emit('message', { type: typeName, payload: msg.payload });
+        // 發送給外部監聽器
+        this.emit('message', { type: payloadTypeName, payload: message.payload });
     }
 
-    // ── Heartbeat ─────────────────────────────────────────────────────────────
+    /** 啟動 Heartbeat */
+    startHeartbeat() {
+        this.stopHeartbeat();
 
-    _startHeartbeat() {
-        this._stopHeartbeat();
-        this.heartbeatTimer = setInterval(() => {
-            if (!this.connected) { this._stopHeartbeat(); return; }
-            if (Date.now() - this.lastHeartbeat > HEARTBEAT_TIMEOUT) {
+        this.heartbeatInterval = setInterval(() => {
+            if (!this.connected) {
+                this.stopHeartbeat();
+                return;
+            }
+
+            // 檢查 Heartbeat 超時
+            if (Date.now() - this.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
                 console.error('❌ Heartbeat 超時，斷開連線');
                 this.disconnect();
                 return;
             }
+
+            // 發送 heartbeat (ProtoHeartbeatEvent, payloadType=51)
             try {
-                const hb = this.proto.lookupType('ProtoHeartbeatEvent').create({ payloadType: 51 });
-                this.send('ProtoHeartbeatEvent', hb).catch(() => {});
-            } catch { /* ignore */ }
-        }, HEARTBEAT_INTERVAL);
+                // 主動發送心跳以維持連線 (Keep Alive)
+                if (this.proto) {
+                    const ProtoHeartbeatEvent = this.proto.lookupType('ProtoHeartbeatEvent');
+                    const message = ProtoHeartbeatEvent.create({ payloadType: 51 });
+                    this.send('ProtoHeartbeatEvent', message).catch(err => console.debug('Heartbeat 發送忽略:', err.message));
+                }
+            } catch (error) {
+                console.error('Heartbeat 發送失敗:', error.message);
+            }
+        }, HEARTBEAT_INTERVAL_MS);
     }
 
-    _stopHeartbeat() {
-        if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
+    /** 停止 Heartbeat */
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
     }
 
-    // ── Reconnect ─────────────────────────────────────────────────────────────
-
-    _scheduleReconnect() {
-        const delay = Math.min(this.reconnectDelay * 2 ** this.reconnectAttempts, MAX_RECONNECT_DELAY);
+    /** 排程重連 */
+    scheduleReconnect() {
+        // 取消重連上限，進入無限重試模式，防止依賴進程重啟
+        const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), MAX_RECONNECT_DELAY_MS);
         this.reconnectAttempts++;
-        console.log(`🔄 ${delay}ms 後重連 (第 ${this.reconnectAttempts} 次)...`);
-        this.reconnectTimer = setTimeout(() => {
-            this.connect().catch(e => console.error('重連失敗:', e.message));
+
+        console.log(`🔄 將在 ${delay}ms 後重連 (第 ${this.reconnectAttempts} 次嘗試)...`);
+
+        this.reconnectTimeout = setTimeout(() => {
+            this.connect().catch((error) => {
+                console.error('重連失敗:', error.message);
+            });
         }, delay);
     }
 
-    // ── Public ────────────────────────────────────────────────────────────────
-
+    /** 斷開連線 */
     disconnect() {
-        this.connected     = false;
+        this.connected = false;
         this.authenticated = false;
-        this.isConnecting  = false;
-        this._stopHeartbeat();
-        if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
-        if (this.socket) { this.socket.destroy(); this.socket = null; }
+
+        this.stopHeartbeat();
+
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+        this.reconnectTimeout = null;
+        this.isConnecting = false; // 防止並行連線鎖
+        }
+
+        if (this.socket) {
+            this.socket.destroy();
+            this.socket = null;
+        }
+
         console.log('👋 已斷開 cTrader 連線');
     }
 
+    /** 檢查連線是否健康 */
     isHealthy() {
-        return this.connected && !!this.socket && (Date.now() - this.lastHeartbeat < HEARTBEAT_TIMEOUT);
+        if (!this.connected || !this.socket) return false;
+        // 檢查最後心跳時間
+        const timeSinceLastHeartbeat = Date.now() - this.lastHeartbeat;
+        return timeSinceLastHeartbeat < HEARTBEAT_TIMEOUT_MS;
     }
 
-    // ── Enum helpers ──────────────────────────────────────────────────────────
+    /** 工具函數：取得 Payload Type ID */
+    getPayloadTypeId(typeName) {
+        let key;
 
-    _typeNameToId(name) {
-        if (name.startsWith('ProtoOA')) {
-            const base  = name.slice(7);
-            const snake = base.replace(/([a-z])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').toUpperCase();
-            const key   = `PROTO_OA_${snake}`;
-            const e     = this.proto.lookupEnum('ProtoOAPayloadType');
-            if (e.values[key] !== undefined) return e.values[key];
-            // Fallback: simpler conversion
-            const alt = `PROTO_OA_${base.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
-            return e.values[alt] ?? 0;
+        if (typeName.startsWith('ProtoOA')) {
+            // Open API Messages
+            // ProtoOAApplicationAuthReq -> APPLICATION_AUTH_REQ -> PROTO_OA_APPLICATION_AUTH_REQ
+            const baseName = typeName.substring(7); // Remove 'ProtoOA'
+            // 改進的 snake case 轉換：處理連續大寫字母（如 SLTP）
+            const snakeName = baseName
+                .replace(/([a-z])([A-Z])/g, '$1_$2')  // camelCase 轉換
+                .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')  // 處理連續大寫如 SLTPReq -> SLTP_Req
+                .toUpperCase();
+            key = `PROTO_OA_${snakeName}`;
+
+            const enumType = this.proto.lookupEnum('ProtoOAPayloadType');
+            const result = enumType.values[key];
+
+            if (result === undefined) {
+                console.warn(`⚠️ [getPayloadTypeId] 找不到 payloadType: ${key} (from ${typeName})`);
+                // 嘗試其他可能的命名格式
+                const altKey = `PROTO_OA_${baseName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
+                if (enumType.values[altKey] !== undefined) {
+                    console.log(`   使用替代 key: ${altKey}`);
+                    return enumType.values[altKey];
+                }
+                console.error(`❌ 無法找到 enum 值，可用的值:`, Object.keys(enumType.values).filter(k => k.includes('AMEND')));
+            }
+            return result || 0;
         } else {
-            const base  = name.slice(5); // remove 'Proto'
-            const snake = base.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
-            return this.proto.lookupEnum('ProtoPayloadType').values[snake] ?? 0;
+            // Common Messages
+            // ProtoHeartbeatEvent -> HEARTBEAT_EVENT
+            const baseName = typeName.substring(5); // Remove 'Proto'
+            const snakeName = baseName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+            key = snakeName;
+
+            const enumType = this.proto.lookupEnum('ProtoPayloadType');
+            return enumType.values[key];
         }
     }
 
-    _typeIdToName(id) {
-        const oaEnum = this.proto.lookupEnum('ProtoOAPayloadType');
-        const cmEnum = this.proto.lookupEnum('ProtoPayloadType');
-
-        if (id >= 2000) {
-            for (const [name, val] of Object.entries(oaEnum.values)) {
-                if (val !== id) continue;
-                return name.split('_').map((p, i) => {
-                    if (p === 'PROTO') return 'Proto';
-                    if (p === 'OA')    return 'OA';
-                    return p.charAt(0) + p.slice(1).toLowerCase();
-                }).join('');
+    /** 工具函數：取得 Payload Type Name */
+    getPayloadTypeName(typeId) {
+        // 根據 ID 範圍判斷 (OA > 2000, Common < 2000)
+        if (typeId < 2000) {
+            const ProtoPayloadType = this.proto.lookupEnum('ProtoPayloadType');
+            for (const [name, id] of Object.entries(ProtoPayloadType.values)) {
+                if (id === typeId) {
+                    // Common Message (e.g. HEARTBEAT_EVENT -> ProtoHeartbeatEvent)
+                    return name
+                        .split('_')
+                        .map(part => part.charAt(0) + part.slice(1).toLowerCase()) // Capitalize
+                        .join('')
+                        .replace('Req', 'Req').replace('Res', 'Res') // Already capitalized
+                        .replace(/^/, 'Proto'); // Prepend Proto
+                    // Example: HEARTBEAT_EVENT -> HeartbeatEvent -> ProtoHeartbeatEvent
+                }
             }
         } else {
-            for (const [name, val] of Object.entries(cmEnum.values)) {
-                if (val !== id) continue;
-                return 'Proto' + name.split('_').map(p => p.charAt(0) + p.slice(1).toLowerCase()).join('');
+            const ProtoOAPayloadType = this.proto.lookupEnum('ProtoOAPayloadType');
+            for (const [name, id] of Object.entries(ProtoOAPayloadType.values)) {
+                if (id === typeId) {
+                    // 將 PROTO_OA_ERROR_RES 轉為 ProtoOAErrorRes
+                    return name
+                        .split('_')
+                        .map(part => {
+                            if (part === 'OA') return 'OA'; // 保留 OA 大寫
+                            if (part === 'PROTO') return 'Proto';
+                            return part.charAt(0) + part.slice(1).toLowerCase();
+                        })
+                        .join('')
+                        .replace('Req', 'Req').replace('Res', 'Res').replace('Event', 'Event'); // 確保尾綴格式正確
+                }
             }
         }
-        return `Unknown(${id})`;
+        return `Unknown(${typeId})`;
     }
 }
 

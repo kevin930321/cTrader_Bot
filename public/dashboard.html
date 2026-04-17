@@ -1,455 +1,811 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>US30 Trading Bot Dashboard</title>
-<style>
-:root {
-  --bg:      #0f172a;
-  --card:    #1e293b;
-  --border:  rgba(255,255,255,0.07);
-  --text:    #f8fafc;
-  --muted:   #94a3b8;
-  --dim:     #64748b;
-  --blue:    #3b82f6;
-  --green:   #22c55e;
-  --red:     #ef4444;
-  --yellow:  #eab308;
-  --orange:  #f97316;
-  --purple:  #8b5cf6;
-}
-*, *::before, *::after { box-sizing: border-box; }
-body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; }
-.container { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAS100 cTrader Bot Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --accent-color: #3b82f6;
+            --success-color: #22c55e;
+            --danger-color: #ef4444;
+            --warning-color: #eab308;
+            --purple-color: #8b5cf6;
+        }
 
-/* Header */
-.header { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; text-align: center; }
-.header h1 { margin: 0 0 12px; font-size: 1.4rem; background: linear-gradient(135deg,var(--blue),var(--purple)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
-.badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 20px; font-size: 0.82rem; font-weight: 500; }
-.badge-ok      { background: rgba(34,197,94,.18);  color: var(--green);  }
-.badge-bad     { background: rgba(239,68,68,.18);  color: var(--red);    }
-.badge-active  { background: rgba(59,130,246,.18); color: var(--blue);   }
-.badge-idle    { background: rgba(100,116,139,.18); color: var(--muted); }
-.badge-paused  { background: rgba(249,115,22,.18); color: var(--orange); }
+        * {
+            box-sizing: border-box;
+        }
 
-/* Card */
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
-.card-title { font-size: 0.88rem; color: var(--muted); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
 
-/* Price */
-.price-display { text-align: center; font-size: 2.8rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 8px 0; }
-.price-sub { text-align: center; font-size: 0.92rem; color: var(--muted); }
-.price-sub span { color: var(--text); font-weight: 600; }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
 
-/* Stats grid */
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px,1fr)); gap: 10px; }
-.stat { background: rgba(0,0,0,.25); padding: 12px; border-radius: 8px; text-align: center; }
-.stat-label { font-size: 0.72rem; color: var(--dim); margin-bottom: 4px; }
-.stat-value { font-size: 1.15rem; font-weight: 700; }
-.green { color: var(--green); }
-.red   { color: var(--red);   }
-.blue  { color: var(--blue);  }
+        .header {
+            text-align: center;
+            padding: 20px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
 
-/* Params */
-.params-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(95px,1fr)); gap: 10px; margin-bottom: 14px; }
-.field label { display: block; font-size: 0.68rem; color: var(--dim); margin-bottom: 4px; }
-.field input  { width: 100%; padding: 7px 9px; border-radius: 6px; border: 1px solid #334155; background: var(--bg); color: var(--text); font-size: 0.88rem; }
-.field input:focus { outline: none; border-color: var(--blue); }
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+            display: inline-block;
+        }
 
-/* Buttons */
-button { padding: 9px 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.87rem; transition: opacity .15s, transform .1s; }
-button:hover  { opacity: .88; }
-button:active { transform: scale(.97); }
-.btn-blue   { background: var(--blue);   color: #fff; }
-.btn-green  { background: var(--green);  color: #fff; }
-.btn-red    { background: var(--red);    color: #fff; }
-.btn-yellow { background: var(--yellow); color: #000; }
-.btn-orange { background: var(--orange); color: #fff; }
-.btn-sm     { padding: 5px 10px; font-size: 0.78rem; }
-.actions    { display: flex; flex-wrap: wrap; gap: 8px; }
+        .status-row {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
 
-/* Positions */
-.position { background: rgba(0,0,0,.25); border-left: 4px solid; border-radius: 8px; padding: 11px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.pos-long  { border-left-color: var(--green); }
-.pos-short { border-left-color: var(--red);   }
-.pos-info  { flex: 1; }
-.pos-type  { font-weight: 700; font-size: 1rem; }
-.pos-meta  { font-size: 0.82rem; color: var(--muted); margin-top: 3px; }
-.pos-pnl   { text-align: right; flex-shrink: 0; }
-.pnl-val   { font-size: 1.05rem; font-weight: 700; }
-.pos-id    { font-size: 0.68rem; color: var(--dim); }
-.no-pos    { text-align: center; color: var(--dim); padding: 20px; font-size: 0.9rem; }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
 
-/* Chart */
-#equity-chart { width: 100%; height: 200px; border-radius: 8px; display: block; }
+        .status-connected {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--success-color);
+        }
 
-/* Logs */
-.log-box { background: #000; padding: 12px 14px; border-radius: 10px; font-family: 'Roboto Mono', monospace; height: 200px; overflow-y: auto; font-size: 0.78rem; color: #33ff33; }
-.log-box::-webkit-scrollbar { width: 5px; }
-.log-box::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        .status-disconnected {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger-color);
+        }
 
-@media (max-width: 560px) {
-  .price-display { font-size: 2.2rem; }
-  .stats-grid    { grid-template-columns: repeat(2,1fr); }
-}
-</style>
+        .status-watching {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-color);
+        }
+
+        .status-idle {
+            background: rgba(100, 116, 139, 0.2);
+            color: #94a3b8;
+        }
+
+        .status-paused {
+            background: rgba(249, 115, 22, 0.2);
+            color: #f97316;
+        }
+
+        .price-display {
+            text-align: center;
+            font-size: 3rem;
+            font-family: 'Roboto Mono', monospace;
+            margin: 10px 0;
+            font-weight: 700;
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .card-label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+        }
+
+        .stat-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .text-green {
+            color: var(--success-color);
+        }
+
+        .text-red {
+            color: var(--danger-color);
+        }
+
+        .text-blue {
+            color: var(--accent-color);
+        }
+
+        .params-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            font-size: 0.9rem;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            font-size: 0.9rem;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning-color);
+            color: black;
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-pause {
+            background: #f97316;
+            color: white;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        .actions-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .position-card {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            gap: 12px;
+        }
+
+        .position-long {
+            border-left-color: var(--success-color);
+        }
+
+        .position-short {
+            border-left-color: var(--danger-color);
+        }
+
+        .position-info {
+            flex: 1;
+        }
+
+        .position-type {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .position-details {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+
+        .position-pnl {
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .pnl-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .position-id {
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .btn-close-position {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .btn-close-position:hover {
+            background: #dc2626;
+        }
+
+        .log-container {
+            background: #000;
+            padding: 15px;
+            border-radius: 12px;
+            font-family: 'Roboto Mono', monospace;
+            height: 200px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+            color: #33ff33;
+        }
+
+        .log-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .log-container::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .log-container::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        .no-positions {
+            text-align: center;
+            color: #64748b;
+            padding: 20px;
+            font-size: 0.9rem;
+        }
+
+        #equity-chart {
+            width: 100%;
+            height: 200px;
+            border-radius: 8px;
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            .price-display {
+                font-size: 2.5rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
 </head>
+
 <body>
-<div class="container">
+    <div class="container">
+        <div class="header">
+            <h1>🤖 NAS100 cTrader Bot</h1>
+            <div class="status-row">
+                <span id="connection-status" class="status-badge status-disconnected">⚪ 連線中...</span>
+                <span id="watching-status" class="status-badge status-idle">👁️ 待機</span>
+                <span id="trade-status" class="status-badge status-idle">📊 今日未交易</span>
+                <span id="pause-status" class="status-badge" style="display:none">⏸️ 交易暫停</span>
+            </div>
+        </div>
 
-  <!-- Header -->
-  <div class="header">
-    <h1>🤖 US30 cTrader Bot</h1>
-    <div class="badges">
-      <span id="b-conn"  class="badge badge-bad">⚪ 連線中...</span>
-      <span id="b-watch" class="badge badge-idle">👁️ 待機</span>
-      <span id="b-trade" class="badge badge-idle">⏳ 等待進場</span>
-      <span id="b-pause" class="badge badge-paused" style="display:none">⏸️ 交易暫停</span>
+        <div class="card">
+            <div class="card-label">即時價格</div>
+            <div class="price-display" id="current-price">--</div>
+            <div style="text-align: center; font-size: 0.95rem; color: #94a3b8;">
+                基準點: <span id="open-price" style="color: white; font-weight: 600;">--</span>
+                &nbsp;|&nbsp;
+                價差: <span id="price-diff" style="font-weight: 600;">--</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-label">📊 帳戶統計</div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">餘額</div>
+                    <div class="stat-value text-green" id="balance">$--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">淨值</div>
+                    <div class="stat-value" id="equity">$--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">已用保證金</div>
+                    <div class="stat-value" id="usedMargin">$--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">可用保證金</div>
+                    <div class="stat-value" id="freeMargin">$--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">勝率</div>
+                    <div class="stat-value" id="win-rate">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">總勝場</div>
+                    <div class="stat-value text-green" id="wins">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">總敗場</div>
+                    <div class="stat-value text-red" id="losses">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">槓桿</div>
+                    <div class="stat-value" id="leverage">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-label">📈 績效曲線</div>
+            <canvas id="equity-chart"></canvas>
+        </div>
+
+        <div class="card">
+            <div class="card-label">⚙️ 策略參數<button class="btn-primary" onclick="saveConfig()"
+                    style="padding: 6px 12px; font-size: 0.8rem;">💾 儲存</button></div>
+            <div class="params-grid">
+                <div class="form-group"><label>Entry Offset</label><input type="number" id="cfg-entryOffset" value="10">
+                </div>
+                <div class="form-group"><label>Long TP</label><input type="number" id="cfg-longTP" value="8"></div>
+                <div class="form-group"><label>Short TP</label><input type="number" id="cfg-shortTP" value="5"></div>
+                <div class="form-group"><label>Long SL</label><input type="number" id="cfg-longSL" value="1000"></div>
+                <div class="form-group"><label>Short SL</label><input type="number" id="cfg-shortSL" value="1000"></div>
+                <div class="form-group"><label>Lot Size</label><input type="number" id="cfg-lotSize" value="0.1"
+                        step="0.01"></div>
+                <div class="form-group"><label>盯盤開始 (分)</label><input type="number" id="cfg-minsAfterOpen" value="1"
+                        min="0" max="60"></div>
+                <div class="form-group"><label>基準偏移 (分)</label><input type="number" id="cfg-baselineOffsetMinutes"
+                        value="0" min="0" max="60"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-label">🎮 操作控制</div>
+            <div class="actions-row">
+                <button class="btn-primary" onclick="toggleWatch()">👁️ 切換盯盤</button>
+                <button id="pause-btn" class="btn-pause" onclick="togglePause()">⏸️ 暫停交易</button>
+                <button class="btn-success" onclick="fetchOpenPrice()">📊 取得基準點</button>
+                <button class="btn-warning" onclick="resetDaily()">🔄 重置今日狀態</button>
+                <button class="btn-danger" onclick="closeAllPositions()">⚠️ 緊急平倉</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-label"><span>📈 當前持倉 (<span id="position-count">0</span>)</span></div>
+            <div id="positions-list">
+                <div class="no-positions">目前無持倉</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-label">📜 即時日誌</div>
+            <div class="log-container" id="logs">
+                <div>等待日誌...</div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <!-- Price -->
-  <div class="card">
-    <div class="card-title">即時價格</div>
-    <div class="price-display" id="cur-price">--</div>
-    <div class="price-sub">
-      基準點:&nbsp;<span id="open-price">--</span>
-      &nbsp;|&nbsp;
-      價差:&nbsp;<span id="price-diff">--</span>
-    </div>
-  </div>
+    <script>
+        const API_URL = '/api';
+        const PRICE_MULTIPLIER = 100000;
+        let socket = null, socketConnected = false, lastLogFetch = 0, equityChart = null;
 
-  <!-- Account stats -->
-  <div class="card">
-    <div class="card-title">📊 帳戶統計</div>
-    <div class="stats-grid">
-      <div class="stat"><div class="stat-label">餘額</div><div class="stat-value green" id="s-balance">$--</div></div>
-      <div class="stat"><div class="stat-label">淨值</div><div class="stat-value" id="s-equity">$--</div></div>
-      <div class="stat"><div class="stat-label">已用保證金</div><div class="stat-value" id="s-usedMargin">$--</div></div>
-      <div class="stat"><div class="stat-label">可用保證金</div><div class="stat-value" id="s-freeMargin">$--</div></div>
-      <div class="stat"><div class="stat-label">勝率</div><div class="stat-value" id="s-winRate">--</div></div>
-      <div class="stat"><div class="stat-label">總勝場</div><div class="stat-value green" id="s-wins">0</div></div>
-      <div class="stat"><div class="stat-label">總敗場</div><div class="stat-value red"   id="s-losses">0</div></div>
-      <div class="stat"><div class="stat-label">槓桿</div><div class="stat-value" id="s-leverage">--</div></div>
-    </div>
-  </div>
+        // 節流函數
+        function throttle(func, limit) {
+            let inThrottle;
+            return function (...args) {
+                if (!inThrottle) { func.apply(this, args); inThrottle = true; setTimeout(() => inThrottle = false, limit); }
+            };
+        }
 
-  <!-- Equity chart -->
-  <div class="card">
-    <div class="card-title">📈 績效曲線</div>
-    <canvas id="equity-chart"></canvas>
-  </div>
+        // 格式化損益
+        function formatPnL(pnl) {
+            if (pnl == null) return { text: '--', color: '#94a3b8' };
+            return { text: (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2), color: pnl >= 0 ? '#22c55e' : '#ef4444' };
+        }
 
-  <!-- Strategy params -->
-  <div class="card">
-    <div class="card-title">
-      ⚙️ 策略參數
-      <button class="btn-blue btn-sm" onclick="saveConfig()">💾 儲存</button>
-    </div>
-    <div class="params-grid">
-      <div class="field"><label>Entry Offset</label><input type="number" id="cfg-entryOffset" value="10"></div>
-      <div class="field"><label>Long TP</label><input type="number" id="cfg-longTP" value="8"></div>
-      <div class="field"><label>Short TP</label><input type="number" id="cfg-shortTP" value="5"></div>
-      <div class="field"><label>Long SL</label><input type="number" id="cfg-longSL" value="1000"></div>
-      <div class="field"><label>Short SL</label><input type="number" id="cfg-shortSL" value="1000"></div>
-      <div class="field"><label>Lot Size</label><input type="number" id="cfg-lotSize" value="0.1" step="0.01"></div>
-      <div class="field"><label>盯盤開始(分)</label><input type="number" id="cfg-minsAfterOpen" value="1" min="0" max="60"></div>
-      <div class="field"><label>基準偏移(分)</label><input type="number" id="cfg-baselineOffsetMinutes" value="0" min="0" max="60"></div>
-    </div>
-  </div>
+        // 持倉卡片模板
+        function renderPositionCard(pos) {
+            const typeClass = pos.type === 'long' ? 'position-long' : 'position-short';
+            const typeIcon = pos.type === 'long' ? '📈' : '📉';
+            const pnl = formatPnL(pos.pnl);
+            return `<div class="position-card ${typeClass}">
+                <div class="position-info"><div class="position-type">${typeIcon} ${pos.type.toUpperCase()}</div>
+                <div class="position-details">Entry: ${pos.entryPrice?.toFixed(2) ?? '--'} | Vol: ${pos.volume?.toFixed(2) ?? '--'}</div></div>
+                <div class="position-pnl"><div class="pnl-value" style="color: ${pnl.color}">${pnl.text}</div><div class="position-id">ID: ${pos.id ?? '--'}</div></div>
+                <button class="btn-close-position" onclick="closePosition(${pos.id})">平倉</button></div>`;
+        }
 
-  <!-- Controls -->
-  <div class="card">
-    <div class="card-title">🎮 操作控制</div>
-    <div class="actions">
-      <button class="btn-blue"   onclick="toggleWatch()">👁️ 切換盯盤</button>
-      <button id="pause-btn" class="btn-orange" onclick="togglePause()">⏸️ 暫停交易</button>
-      <button class="btn-green"  onclick="fetchOpenPrice()">📊 取得基準點</button>
-      <button class="btn-yellow" onclick="resetDaily()">🔄 重置今日</button>
-      <button class="btn-red"    onclick="closeAllPositions()">⚠️ 緊急平倉</button>
-    </div>
-  </div>
+        function updatePositionsList(positions) {
+            document.getElementById('position-count').textContent = positions.length;
+            document.getElementById('positions-list').innerHTML = positions.length === 0
+                ? '<div class="no-positions">目前無持倉</div>'
+                : positions.map(renderPositionCard).join('');
+        }
 
-  <!-- Positions -->
-  <div class="card">
-    <div class="card-title">📈 當前持倉 (<span id="pos-count">0</span>)</div>
-    <div id="pos-list"><div class="no-pos">目前無持倉</div></div>
-  </div>
+        // 績效圖表 (Canvas 風格)
+        let chartData = null;
+        let chartConfig = null;
 
-  <!-- Logs -->
-  <div class="card">
-    <div class="card-title">📜 即時日誌</div>
-    <div class="log-box" id="logs"><div>等待日誌...</div></div>
-  </div>
+        function initEquityChart() {
+            const canvas = document.getElementById('equity-chart');
+            if (!canvas) return;
 
-</div>
+            // 初始化 canvas 尺寸並繪製空白背景
+            canvas.width = canvas.offsetWidth || 600;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
 
-<script>
-const PM = 100_000; // price multiplier
-let socket = null, socketUp = false, lastPoll = 0, cfgLoaded = false;
-let chartData = null, chartCfg = null;
+            // 繪製深色背景
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const $  = id => document.getElementById(id);
-const fmt = (n, d=2) => n == null ? '--' : n.toFixed(d);
-const fmtMoney = n => '$' + fmt(n);
-const throttle = (fn, ms) => { let t; return (...a) => { if (!t) { fn(...a); t = setTimeout(() => t=null, ms); } }; };
+            // 顯示提示文字
+            ctx.fillStyle = '#64748b';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('等待交易數據...', canvas.width / 2, canvas.height / 2);
+        }
 
-function pnlStyle(v) {
-  if (v == null) return { text: '--', color: 'var(--muted)' };
-  return { text: (v >= 0 ? '+' : '') + fmtMoney(v), color: v >= 0 ? 'var(--green)' : 'var(--red)' };
-}
+        function updateEquityChart(trades) {
+            if (!trades?.length) return;
+            const canvas = document.getElementById('equity-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
 
-// ── Positions ────────────────────────────────────────────────────────────────
-function posCard(pos) {
-  const icon  = pos.type === 'long' ? '📈' : '📉';
-  const cls   = pos.type === 'long' ? 'pos-long' : 'pos-short';
-  const { text, color } = pnlStyle(pos.pnl);
-  return `<div class="position ${cls}">
-    <div class="pos-info">
-      <div class="pos-type">${icon} ${pos.type.toUpperCase()}</div>
-      <div class="pos-meta">Entry: ${fmt(pos.entryPrice)} | Vol: ${fmt(pos.volume)}</div>
-    </div>
-    <div class="pos-pnl">
-      <div class="pnl-val" style="color:${color}">${text}</div>
-      <div class="pos-id">ID: ${pos.id ?? '--'}</div>
-    </div>
-    <button class="btn-red btn-sm" onclick="closePosition(${pos.id})">平倉</button>
-  </div>`;
-}
+            // 設定 canvas 尺寸
+            canvas.width = canvas.offsetWidth || 600;
+            canvas.height = 200;
 
-function renderPositions(list) {
-  $('pos-count').textContent = list.length;
-  $('pos-list').innerHTML = list.length ? list.map(posCard).join('') : '<div class="no-pos">目前無持倉</div>';
-}
+            const sorted = [...trades].reverse();
+            const values = sorted.map(t => t.balance);
 
-// ── Equity Chart ─────────────────────────────────────────────────────────────
-function initChart() {
-  const c = $('equity-chart'); if (!c) return;
-  c.width = c.offsetWidth || 600; c.height = 200;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0f172a'; ctx.fillRect(0,0,c.width,c.height);
-  ctx.fillStyle = 'var(--dim)'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('等待交易數據...', c.width/2, c.height/2);
-}
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 45;
 
-function drawChart(trades) {
-  if (!trades?.length) return;
-  const c = $('equity-chart'); if (!c) return;
-  const ctx = c.getContext('2d');
-  c.width = c.offsetWidth || 600; c.height = 200;
+            const minVal = Math.min(...values);
+            const maxVal = Math.max(...values);
+            const range = maxVal - minVal || 1;
 
-  const values = [...trades].reverse().map(t => t.balance);
-  const W = c.width, H = c.height, P = 45;
-  const mn = Math.min(...values), mx = Math.max(...values), rng = mx - mn || 1;
-  chartData = { values, trades: [...trades].reverse() };
-  chartCfg  = { W, H, P, mn, mx, rng };
-  _drawBase(ctx, chartData, chartCfg);
+            chartData = { values, sorted };
+            chartConfig = { width, height, padding, minVal, maxVal, range };
 
-  c.onmousemove = e => {
-    const r = c.getBoundingClientRect();
-    _drawBase(ctx, chartData, chartCfg);
-    _drawCrosshair(ctx, e.clientX - r.left, e.clientY - r.top, chartData, chartCfg);
-  };
-  c.onmouseleave = () => _drawBase(ctx, chartData, chartCfg);
-}
+            drawChartBase(ctx, chartData, chartConfig);
 
-function _drawBase(ctx, d, cfg) {
-  const { values } = d;
-  const { W, H, P, mn, mx, rng } = cfg;
-  ctx.fillStyle = '#0f172a'; ctx.fillRect(0,0,W,H);
-  if (values.length < 2) {
-    ctx.fillStyle = 'var(--dim)'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('需要至少 2 筆交易', W/2, H/2); return;
-  }
-  const step = (W - P*2) / (values.length - 1);
-  const px = (i,v) => [P + i*step, H - P - ((v-mn)/rng)*(H-P*2)];
+            // 滑鼠事件
+            canvas.onmousemove = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                drawChartBase(ctx, chartData, chartConfig);
+                drawCrosshair(ctx, mouseX, mouseY, chartData, chartConfig);
+            };
+            canvas.onmouseleave = () => drawChartBase(ctx, chartData, chartConfig);
+        }
 
-  // Fill
-  ctx.beginPath(); ctx.moveTo(P, H-P);
-  values.forEach((v,i) => { const [x,y] = px(i,v); ctx.lineTo(x,y); });
-  ctx.lineTo(P+(values.length-1)*step, H-P); ctx.closePath();
-  ctx.fillStyle = 'rgba(59,130,246,.13)'; ctx.fill();
+        function drawChartBase(ctx, data, config) {
+            const { values } = data;
+            const { width, height, padding, minVal, maxVal, range } = config;
 
-  // Line
-  ctx.strokeStyle = 'var(--blue)'; ctx.lineWidth = 2; ctx.beginPath();
-  values.forEach((v,i) => { const [x,y] = px(i,v); i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); });
-  ctx.stroke();
+            // 清空畫布
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, width, height);
 
-  // Dots
-  values.forEach((v,i) => {
-    const [x,y] = px(i,v);
-    ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2);
-    ctx.fillStyle = 'var(--blue)'; ctx.fill();
-  });
+            if (values.length < 2) {
+                ctx.fillStyle = '#64748b';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('需要至少 2 筆交易數據', width / 2, height / 2);
+                return;
+            }
 
-  // Labels
-  ctx.fillStyle = 'var(--dim)'; ctx.font = '11px sans-serif';
-  ctx.textAlign = 'left';  ctx.fillText('$'+mx.toFixed(0), 5, P);
-  ctx.fillText('$'+mn.toFixed(0), 5, H-P+15);
-  ctx.textAlign = 'center'; ctx.fillText('#1', P, H-4); ctx.fillText('#'+values.length, W-P, H-4);
-}
+            // 繪製填充區域
+            const step = (width - padding * 2) / (values.length - 1);
+            ctx.beginPath();
+            ctx.moveTo(padding, height - padding);
+            values.forEach((v, i) => {
+                const x = padding + i * step;
+                const y = height - padding - ((v - minVal) / range) * (height - padding * 2);
+                ctx.lineTo(x, y);
+            });
+            ctx.lineTo(padding + (values.length - 1) * step, height - padding);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+            ctx.fill();
 
-function _drawCrosshair(ctx, mx, my, d, cfg) {
-  const { values } = d;
-  const { W, H, P, mn, rng } = cfg;
-  if (mx < P || mx > W-P || my < P || my > H-P) return;
-  const step = (W-P*2)/(values.length-1);
-  const idx  = Math.max(0, Math.min(Math.round((mx-P)/step), values.length-1));
-  const cx   = P + idx*step;
-  const cy   = H - P - ((values[idx]-mn)/rng)*(H-P*2);
+            // 繪製曲線
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            values.forEach((v, i) => {
+                const x = padding + i * step;
+                const y = height - padding - ((v - minVal) / range) * (height - padding * 2);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
-  ctx.beginPath(); ctx.moveTo(cx,P); ctx.lineTo(cx,H-P); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(P,my); ctx.lineTo(W-P,my); ctx.stroke();
-  ctx.setLineDash([]);
+            // 繪製數據點
+            values.forEach((v, i) => {
+                const x = padding + i * step;
+                const y = height - padding - ((v - minVal) / range) * (height - padding * 2);
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#3b82f6';
+                ctx.fill();
+            });
 
-  ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2);
-  ctx.fillStyle = 'var(--blue)'; ctx.fill();
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+            // Y 軸標籤
+            ctx.fillStyle = '#64748b';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('$' + maxVal.toFixed(0), 5, padding);
+            ctx.fillText('$' + minVal.toFixed(0), 5, height - padding + 15);
 
-  const bW=120, bH=44;
-  let bx = cx+12; if (bx+bW > W-8) bx = cx-bW-12;
-  let by = cy-bH/2; if (by<4) by=4; if (by+bH>H-4) by=H-bH-4;
-  ctx.fillStyle = 'rgba(30,41,59,.95)'; ctx.fillRect(bx,by,bW,bH);
-  ctx.strokeStyle = 'var(--blue)'; ctx.lineWidth=1; ctx.strokeRect(bx,by,bW,bH);
-  ctx.fillStyle = '#f8fafc'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(`#${idx+1}`, bx+8, by+15);
-  ctx.fillStyle = values[idx] >= values[0] ? 'var(--green)' : 'var(--red)';
-  ctx.fillText(`$${values[idx].toFixed(2)}`, bx+8, by+33);
-}
+            // X 軸標籤
+            ctx.textAlign = 'center';
+            ctx.fillText('#1', padding, height - 5);
+            ctx.fillText('#' + values.length, width - padding, height - 5);
+        }
 
-// ── UI Update ────────────────────────────────────────────────────────────────
-function updateUI(data) {
-  // Connection badges
-  if (!socketUp) {
-    const [txt,cls] = data.connected && data.authenticated
-      ? ['🟢 已連線','badge-ok'] : data.connected
-      ? ['🟡 連線中...','badge-active'] : ['🔴 未連線','badge-bad'];
-    $('b-conn').textContent = txt;
-    $('b-conn').className   = `badge ${cls}`;
-  }
-  $('b-watch').textContent = data.isWatching ? '👁️ 盯盤中' : '💤 待機';
-  $('b-watch').className   = `badge ${data.isWatching ? 'badge-active' : 'badge-idle'}`;
-  $('b-trade').textContent = data.todayTradeDone ? '✅ 今日已交易' : '⏳ 等待進場';
-  $('b-trade').className   = `badge ${data.todayTradeDone ? 'badge-ok' : 'badge-idle'}`;
+        function drawCrosshair(ctx, mouseX, mouseY, data, config) {
+            const { values, sorted } = data;
+            const { width, height, padding, minVal, range } = config;
 
-  // Pause
-  const paused = data.tradingPaused;
-  $('b-pause').style.display = paused ? '' : 'none';
-  $('pause-btn').textContent = paused ? '▶️ 繼續交易' : '⏸️ 暫停交易';
-  $('pause-btn').className   = paused ? 'btn-green' : 'btn-orange';
+            if (mouseX < padding || mouseX > width - padding || mouseY < padding || mouseY > height - padding) return;
 
-  // Price
-  const cur  = data.currentPrice ? data.currentPrice / PM : null;
-  const open = data.openPrice    ? data.openPrice    / PM : null;
-  $('cur-price').textContent  = cur  ? cur.toFixed(2)  : '--';
-  $('open-price').textContent = open ? open.toFixed(2) : '--';
-  if (cur && open) {
-    const diff = cur - open;
-    $('price-diff').textContent = (diff>0?'+':'')+diff.toFixed(2);
-    $('price-diff').className   = diff>0 ? 'green' : diff<0 ? 'red' : '';
-  }
+            const totalPoints = values.length;
+            const step = (width - padding * 2) / (totalPoints - 1);
+            const index = Math.round((mouseX - padding) / step);
+            const clampedIndex = Math.max(0, Math.min(index, totalPoints - 1));
+            const crossX = padding + clampedIndex * step;
 
-  // Stats
-  $('s-balance').textContent    = fmtMoney(data.balance ?? 0);
-  $('s-equity').textContent     = fmtMoney(data.equity ?? data.balance ?? 0);
-  $('s-usedMargin').textContent = fmtMoney(data.usedMargin ?? 0);
-  $('s-freeMargin').textContent = fmtMoney(data.freeMargin ?? data.balance ?? 0);
-  $('s-winRate').textContent    = data.winRate  || '--';
-  $('s-wins').textContent       = data.wins     || 0;
-  $('s-losses').textContent     = data.losses   || 0;
-  $('s-leverage').textContent   = data.leverage ? '1:'+data.leverage : '--';
+            // 垂直線
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(crossX, padding);
+            ctx.lineTo(crossX, height - padding);
+            ctx.stroke();
 
-  const eq = $('s-equity');
-  eq.className = 'stat-value' + (data.unrealizedPnL > 0 ? ' green' : data.unrealizedPnL < 0 ? ' red' : '');
+            // 水平線
+            ctx.beginPath();
+            ctx.moveTo(padding, mouseY);
+            ctx.lineTo(width - padding, mouseY);
+            ctx.stroke();
+            ctx.setLineDash([]);
 
-  // Config (once)
-  if (data.config && !cfgLoaded) {
-    ['entryOffset','longTP','shortTP','longSL','shortSL','lotSize','minsAfterOpen','baselineOffsetMinutes'].forEach(k => {
-      const el = $('cfg-'+k); if (el && data.config[k] != null) el.value = data.config[k];
-    });
-    cfgLoaded = true;
-  }
+            // 數據提示框
+            const trade = sorted[clampedIndex];
+            const value = values[clampedIndex];
+            const y = height - padding - ((value - minVal) / range) * (height - padding * 2);
 
-  renderPositions(data.positions || []);
-  if (data.logs?.length) $('logs').innerHTML = data.logs.map(l=>`<div>${l}</div>`).join('');
-  if (data.trades)       drawChart(data.trades);
-}
+            // 高亮數據點
+            ctx.beginPath();
+            ctx.arc(crossX, y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#3b82f6';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
 
-const throttledUpdate = throttle(updateUI, 100);
+            // 提示框
+            const boxW = 120, boxH = 45;
+            let boxX = crossX + 10;
+            if (boxX + boxW > width - 10) boxX = crossX - boxW - 10;
+            let boxY = y - boxH / 2;
+            if (boxY < 5) boxY = 5;
+            if (boxY + boxH > height - 5) boxY = height - boxH - 5;
 
-// ── Socket.IO ────────────────────────────────────────────────────────────────
-(function initIO() {
-  const s = document.createElement('script');
-  s.src = '/socket.io/socket.io.js';
-  s.onload = () => {
-    socket = io();
-    socket.on('connect',    () => { socketUp = true; $('b-conn').textContent = '🟢 即時連線'; $('b-conn').className = 'badge badge-ok'; });
-    socket.on('disconnect', () => { socketUp = false; });
-    socket.on('initial-state',   updateUI);
-    socket.on('realtime-update', throttledUpdate);
-    socket.on('account-update',  d => { if (d.balance != null) $('s-balance').textContent = fmtMoney(d.balance); });
-    socket.on('positions-update',d => renderPositions(d.positions || []));
-    socket.on('new-log', msg => {
-      const box = $('logs');
-      const div = document.createElement('div'); div.textContent = msg;
-      box.insertBefore(div, box.firstChild);
-      while (box.children.length > 60) box.removeChild(box.lastChild);
-    });
-  };
-  document.head.appendChild(s);
-})();
+            ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-// ── REST polling ─────────────────────────────────────────────────────────────
-async function poll() {
-  if (socketUp && Date.now() - lastPoll < 10_000) return;
-  lastPoll = Date.now();
-  try {
-    const data = await fetch('/api/status').then(r=>r.json());
-    if (socketUp) { if (data.logs) $('logs').innerHTML = data.logs.map(l=>`<div>${l}</div>`).join(''); }
-    else updateUI(data);
-  } catch { /* ignore */ }
-}
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`#${clampedIndex + 1}`, boxX + 8, boxY + 16);
+            ctx.fillStyle = value >= (sorted[0]?.balance || 0) ? '#22c55e' : '#ef4444';
+            ctx.fillText(`$${value.toFixed(2)}`, boxX + 8, boxY + 34);
+        }
 
-// ── Actions ───────────────────────────────────────────────────────────────────
-async function act(action, extra = {}) {
-  try {
-    const r = await fetch('/api/action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, ...extra }) });
-    const d = await r.json();
-    if (d.success) updateUI(d.state);
-    else alert('操作失敗: ' + (d.error || d.message || '未知錯誤'));
-  } catch(e) { alert('請求失敗: ' + e.message); }
-}
+        // UI 更新
+        function updateUI(data) {
+            const el = (id) => document.getElementById(id);
+            const setConn = (text, cls) => { el('connection-status').textContent = text; el('connection-status').className = 'status-badge ' + cls; };
+            if (!socketConnected) {
+                if (data.connected && data.authenticated) setConn('🟢 已連線', 'status-connected');
+                else if (data.connected) setConn('🟡 連線中...', 'status-watching');
+                else setConn('🔴 未連線', 'status-disconnected');
+            }
 
-function toggleWatch()      { act('toggleWatch'); }
-function togglePause()      { act('togglePause'); }
-function resetDaily()       { if (confirm('確定要重置今日交易狀態嗎？')) act('reset'); }
-function closeAllPositions(){ if (confirm('⚠️ 確定要緊急平倉所有持倉嗎？')) act('closePositions'); }
-function closePosition(id)  { if (confirm(`確定要平倉 ID:${id} 嗎？`)) act('closePosition', { positionId: id }); }
+            el('watching-status').textContent = data.isWatching ? '👁️ 盯盤中' : '💤 待機';
+            el('watching-status').className = 'status-badge ' + (data.isWatching ? 'status-watching' : 'status-idle');
+            el('trade-status').textContent = data.todayTradeDone ? '✅ 今日已交易' : '⏳ 等待進場';
+            el('trade-status').className = 'status-badge ' + (data.todayTradeDone ? 'status-connected' : 'status-idle');
 
-async function fetchOpenPrice() {
-  try {
-    const r = await fetch('/api/action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'fetchOpenPrice' }) });
-    const d = await r.json();
-    if (d.success) { alert('✅ 基準點已取得'); updateUI(d.state); }
-    else alert('❌ ' + (d.message || '取得基準點失敗'));
-  } catch(e) { alert('請求失敗: ' + e.message); }
-}
+            // 暫停狀態
+            const pauseStatusEl = el('pause-status');
+            const pauseBtn = el('pause-btn');
+            if (data.tradingPaused) {
+                pauseStatusEl.style.display = '';
+                pauseStatusEl.className = 'status-badge status-paused';
+                pauseStatusEl.textContent = '⏸️ 交易暫停';
+                pauseBtn.textContent = '▶️ 繼續交易';
+                pauseBtn.className = 'btn-success';
+            } else {
+                pauseStatusEl.style.display = 'none';
+                pauseBtn.textContent = '⏸️ 暫停交易';
+                pauseBtn.className = 'btn-pause';
+            }
 
-function saveConfig() {
-  const keys = ['entryOffset','longTP','shortTP','longSL','shortSL','lotSize','minsAfterOpen','baselineOffsetMinutes'];
-  const cfg  = Object.fromEntries(keys.map(k => [k, $('cfg-'+k).value]));
-  act('updateConfig', { config: cfg });
-  alert('✅ 策略參數已儲存');
-}
+            const curPrice = data.currentPrice ? data.currentPrice / PRICE_MULTIPLIER : null;
+            const openPrice = data.openPrice ? data.openPrice / PRICE_MULTIPLIER : null;
+            el('current-price').textContent = curPrice ? curPrice.toFixed(2) : '--';
+            el('open-price').textContent = openPrice ? openPrice.toFixed(2) : '--';
+            if (curPrice && openPrice) {
+                const diff = curPrice - openPrice;
+                el('price-diff').textContent = (diff > 0 ? '+' : '') + diff.toFixed(2);
+                el('price-diff').className = diff > 0 ? 'text-green' : (diff < 0 ? 'text-red' : '');
+            }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-initChart();
-poll();
-setInterval(poll, 2000);
-</script>
+            el('balance').textContent = '$' + (data.balance || 0).toFixed(2);
+            el('equity').textContent = '$' + (data.equity || data.balance || 0).toFixed(2);
+            el('usedMargin').textContent = '$' + (data.usedMargin || 0).toFixed(2);
+            el('freeMargin').textContent = '$' + (data.freeMargin || data.balance || 0).toFixed(2);
+            el('win-rate').textContent = data.winRate || '--';
+            el('wins').textContent = data.wins || 0;
+            el('losses').textContent = data.losses || 0;
+            el('leverage').textContent = data.leverage ? '1:' + data.leverage : '--';
+
+            const eqEl = el('equity');
+            eqEl.className = 'stat-value' + (data.unrealizedPnL > 0 ? ' text-green' : (data.unrealizedPnL < 0 ? ' text-red' : ''));
+
+            if (data.config && !window.configLoaded) {
+                ['entryOffset', 'longTP', 'shortTP', 'longSL', 'shortSL', 'lotSize', 'minsAfterOpen', 'baselineOffsetMinutes'].forEach(f => {
+                    const e = el('cfg-' + f); if (e && data.config[f] !== undefined) e.value = data.config[f];
+                });
+                window.configLoaded = true;
+            }
+
+            updatePositionsList(data.positions || []);
+            if (data.logs?.length) { el('logs').innerHTML = data.logs.map(l => `<div>${l}</div>`).join(''); }
+            if (data.trades) updateEquityChart(data.trades);
+        }
+
+        const throttledUpdate = throttle(updateUI, 100);
+
+        // Socket.IO
+        function initSocketIO() {
+            const script = document.createElement('script');
+            script.src = '/socket.io/socket.io.js';
+            script.onload = () => {
+                socket = io();
+                socket.on('connect', () => { socketConnected = true; document.getElementById('connection-status').textContent = '🟢 即時連線'; document.getElementById('connection-status').className = 'status-badge status-connected'; });
+                socket.on('disconnect', () => { socketConnected = false; });
+                socket.on('initial-state', updateUI);
+                socket.on('realtime-update', throttledUpdate);
+                socket.on('account-update', d => { if (d.balance !== undefined) document.getElementById('balance').textContent = '$' + d.balance.toFixed(2); });
+                socket.on('positions-update', d => updatePositionsList(d.positions || []));
+                socket.on('new-log', msg => { const c = document.getElementById('logs'); const div = document.createElement('div'); div.textContent = msg; c.insertBefore(div, c.firstChild); while (c.children.length > 50) c.removeChild(c.lastChild); });
+            };
+            document.head.appendChild(script);
+        }
+
+        // API
+        async function fetchStatus() {
+            if (socketConnected && Date.now() - lastLogFetch < 10000) return;
+            lastLogFetch = Date.now();
+            try { const res = await fetch(API_URL + '/status'); const data = await res.json(); if (socketConnected) { if (data.logs) document.getElementById('logs').innerHTML = data.logs.map(l => `<div>${l}</div>`).join(''); } else updateUI(data); } catch (e) { console.debug('fetchStatus 忽略:', e.message); }
+        }
+
+        async function doAction(action, config = null) {
+            try {
+                const body = { action }; if (config) body.config = config;
+                const res = await fetch(API_URL + '/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.success) updateUI(data.state); else alert('操作失敗: ' + (data.error || data.message || '未知錯誤'));
+            } catch (e) { alert('請求失敗: ' + e.message); }
+        }
+
+        function toggleWatch() { doAction('toggleWatch'); }
+        function togglePause() { doAction('togglePause'); }
+        function resetDaily() { if (confirm('確定要重置今日交易狀態嗎？')) doAction('reset'); }
+        function closeAllPositions() { if (confirm('⚠️ 確定要緊急平倉所有持倉嗎？')) doAction('closePositions'); }
+        async function fetchOpenPrice() { const res = await fetch(API_URL + '/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'fetchOpenPrice' }) }); const data = await res.json(); if (data.success) { alert('✅ 基準點已取得'); updateUI(data.state); } else alert('❌ ' + (data.message || '取得基準點失敗')); }
+        async function closePosition(id) { if (!confirm(`確定要平倉持倉 ID: ${id} 嗎？`)) return; try { const res = await fetch(API_URL + '/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'closePosition', positionId: id }) }); const data = await res.json(); if (data.success) updateUI(data.state); else alert('平倉失敗: ' + (data.error || '未知錯誤')); } catch (e) { alert('請求失敗: ' + e.message); } }
+        function saveConfig() { const cfg = {};['entryOffset', 'longTP', 'shortTP', 'longSL', 'shortSL', 'lotSize', 'minsAfterOpen', 'baselineOffsetMinutes'].forEach(f => cfg[f] = document.getElementById('cfg-' + f).value); doAction('updateConfig', cfg); alert('✅ 策略參數已儲存'); }
+
+        // 初始化
+        initSocketIO();
+        initEquityChart();
+        fetchStatus();
+        setInterval(fetchStatus, 2000);
+    </script>
 </body>
+
 </html>
