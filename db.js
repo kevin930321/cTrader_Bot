@@ -2,14 +2,15 @@
  * MongoDB 資料庫連線與 Profile CRUD 操作
  */
 
-const { MongoClient } = require('mongodb');
-const { systemLogger } = require('./logger');
+const { MongoClient } = require("mongodb");
+const { systemLogger } = require("./logger");
+const config = require("./config");
 
-// 連線字串從環境變數讀取
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/nas100-bot';
-const DB_NAME = 'trading-bot';
-const COLLECTION_NAME = 'profiles';
-const STATE_COLLECTION = 'bot_state'; // 新增：機器人狀態集合
+// 使用共用設定檔中的 MongoDB 連線字串
+const MONGODB_URI = config.mongodb.uri;
+const DB_NAME = "trading-bot";
+const COLLECTION_NAME = "profiles";
+const STATE_COLLECTION = "bot_state"; // 新增：機器人狀態集合
 
 let client = null;
 let db = null;
@@ -29,10 +30,10 @@ async function connectDB() {
         await client.connect();
         db = client.db(DB_NAME);
         collection = db.collection(COLLECTION_NAME);
-        console.log('✅ MongoDB 連線成功');
+        console.log("✅ MongoDB 連線成功");
         return collection;
     } catch (error) {
-        console.error('❌ MongoDB 連線失敗:', error.message);
+        console.error("❌ MongoDB 連線失敗:", error.message);
         throw error;
     }
 }
@@ -47,7 +48,7 @@ async function loadProfiles() {
         console.log(`📂 從 MongoDB 載入 ${profiles.length} 個 Profile`);
         return profiles;
     } catch (error) {
-        console.error('❌ 載入 Profiles 失敗:', error.message);
+        console.error("❌ 載入 Profiles 失敗:", error.message);
         return [];
     }
 }
@@ -61,11 +62,11 @@ async function saveProfile(profileData) {
         const result = await collection.updateOne(
             { id: profileData.id },
             { $set: profileData },
-            { upsert: true }
+            { upsert: true },
         );
         return result;
     } catch (error) {
-        console.error('❌ 儲存 Profile 失敗:', error.message);
+        console.error("❌ 儲存 Profile 失敗:", error.message);
         throw error;
     }
 }
@@ -76,19 +77,19 @@ async function saveProfile(profileData) {
 async function saveAllProfiles(profilesData) {
     try {
         await connectDB();
-        const operations = profilesData.map(p => ({
+        const operations = profilesData.map((p) => ({
             updateOne: {
                 filter: { id: p.id },
                 update: { $set: p },
-                upsert: true
-            }
+                upsert: true,
+            },
         }));
 
         if (operations.length > 0) {
             await collection.bulkWrite(operations);
         }
     } catch (error) {
-        console.error('❌ 批量儲存 Profiles 失敗:', error.message);
+        console.error("❌ 批量儲存 Profiles 失敗:", error.message);
     }
 }
 
@@ -101,7 +102,7 @@ async function deleteProfile(profileId) {
         const result = await collection.deleteOne({ id: profileId });
         return result.deletedCount > 0;
     } catch (error) {
-        console.error('❌ 刪除 Profile 失敗:', error.message);
+        console.error("❌ 刪除 Profile 失敗:", error.message);
         return false;
     }
 }
@@ -115,7 +116,7 @@ async function closeDB() {
         client = null;
         db = null;
         collection = null;
-        console.log('🔌 MongoDB 連線已關閉');
+        console.log("🔌 MongoDB 連線已關閉");
     }
 }
 
@@ -126,15 +127,15 @@ async function loadState() {
     try {
         await connectDB();
         const stateCol = db.collection(STATE_COLLECTION);
-        const state = await stateCol.findOne({ _id: 'current_state' });
+        const state = await stateCol.findOne({ _id: "current_state" });
 
         if (state) {
-            console.log('📂 從 MongoDB 載入機器人狀態');
+            console.log("📂 從 MongoDB 載入機器人狀態");
             return state;
         }
         return null;
     } catch (error) {
-        console.error('❌ 載入狀態失敗:', error.message);
+        console.error("❌ 載入狀態失敗:", error.message);
         return null;
     }
 }
@@ -147,12 +148,12 @@ async function saveState(stateData) {
         await connectDB();
         const stateCol = db.collection(STATE_COLLECTION);
         await stateCol.updateOne(
-            { _id: 'current_state' },
-            { $set: { ...stateData, _id: 'current_state' } },
-            { upsert: true }
+            { _id: "current_state" },
+            { $set: { ...stateData, _id: "current_state" } },
+            { upsert: true },
         );
     } catch (error) {
-        console.error('❌ 儲存狀態失敗:', error.message);
+        console.error("❌ 儲存狀態失敗:", error.message);
     }
 }
 
@@ -164,5 +165,5 @@ module.exports = {
     deleteProfile,
     loadState,
     saveState,
-    closeDB
+    closeDB,
 };
