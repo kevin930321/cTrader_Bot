@@ -621,10 +621,9 @@ class ExecutionEngine extends EventEmitter {
     }
 
     /**
-     * 檢查是否在交易時段內
-     * 交易時段：台北時間 07:01 ~ 隔天 06:00 (對應美股交易時間)
-     * 冬令: 開盤 07:30，收盤 06:00
-     * 夏令: 開盤 06:30，收盤 05:00
+     * 檢查是否在交易時段內（台北時間）
+     * 交易時段跨越午夜：開盤時間 ~ 23:59 或 00:00 ~ 收盤時間
+     * 開盤/收盤時間由 config.market.summer / config.market.winter 設定
      */
     isWithinTradingHours() {
         const now = new Date();
@@ -635,8 +634,9 @@ class ExecutionEngine extends EventEmitter {
         const marketConfig = isUsDst(now) ? this.config.market.summer : this.config.market.winter;
 
         const openMinutes = marketConfig.openHour * 60 + marketConfig.openMinute;
-        const closeMinutes = isUsDst(now) ? (5 * 60) : (6 * 60);
+        const closeMinutes = marketConfig.closeHour * 60 + marketConfig.closeMinute;
 
+        // 交易時段跨越午夜：開盤後到 23:59 或 00:00 到收盤前
         if (currentMinutes >= openMinutes) {
             return true;
         } else if (currentMinutes < closeMinutes) {
