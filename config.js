@@ -65,15 +65,15 @@ module.exports = {
         minsAfterOpen: getEnvNumber('MINS_AFTER_OPEN', 1), // 開盤後幾分鐘開始盯盤
         baselineOffsetMinutes: getEnvNumber('BASELINE_OFFSET_MINUTES', 0), // 使用開盤後幾分鐘的價格作為基準點 (0=開盤時)
 
-        // 冬令時間 (UTC-5) -> 台北 07:00 開盤
+        // 冬令時間 (UTC-5) -> 台北 07:30 開盤
         winter: {
             openHour: 7,
-            openMinute: 0
+            openMinute: 30
         },
-        // 夏令時間 (UTC-4) -> 台北 06:00 開盤
+        // 夏令時間 (UTC-4) -> 台北 06:30 開盤
         summer: {
             openHour: 6,
-            openMinute: 0
+            openMinute: 30
         }
     },
 

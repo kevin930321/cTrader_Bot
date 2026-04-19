@@ -7,15 +7,11 @@ const tls = require('tls');
 const protobuf = require('protobufjs');
 const path = require('path');
 const EventEmitter = require('events');
-const { apiLogger } = require('./logger');
-const { ConnectionError } = require('./errors');
-
 const CONNECTION_TIMEOUT_MS = 10000;
 const REQUEST_TIMEOUT_MS = 30000;
 const HEARTBEAT_INTERVAL_MS = 10000;
 const HEARTBEAT_TIMEOUT_MS = 30000;
 const MAX_RECONNECT_DELAY_MS = 60000;
-const CLEANUP_INTERVAL_MS = 60000;
 
 class CTraderConnection extends EventEmitter {
     constructor(config, tokenManager = null) {
@@ -29,14 +25,12 @@ class CTraderConnection extends EventEmitter {
         this.authenticated = false;
 
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 10;
         this.reconnectDelay = 1000;
         this.reconnectTimeout = null;
 
         this.heartbeatInterval = null;
         this.lastHeartbeat = Date.now();
 
-        this.messageQueue = [];
         this.pendingRequests = new Map();
         this.nextClientMsgId = 1;
         this.incomingBuffer = Buffer.alloc(0);
@@ -80,29 +74,59 @@ class CTraderConnection extends EventEmitter {
 
         return new Promise((resolve, reject) => {
             const { host, port } = this.config.ctrader;
+            let settled = false;
+            let timeoutId;
+
+            const cleanup = () => {
+                clearTimeout(timeoutId);
+                this.off('account-auth-success', onAccountAuthSuccess);
+                this.off('connect-error', onConnectError);
+            };
+
+            const safeResolve = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve();
+            };
+
+            const safeReject = (error) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(error);
+            };
+
+            const onAccountAuthSuccess = () => safeResolve();
+            const onConnectError = (error) => safeReject(error);
+
+            this.on('account-auth-success', onAccountAuthSuccess);
+            this.on('connect-error', onConnectError);
+
+            timeoutId = setTimeout(() => {
+                this.isConnecting = false;
+                safeReject(new Error('連線/認證逾時'));
+            }, CONNECTION_TIMEOUT_MS);
 
             console.log(`📡 正在連接 cTrader ${this.config.ctrader.mode} 伺服器...`);
             console.log(`   Host: ${host}:${port}`);
 
             this.socket = tls.connect({
-                host: host,
-                port: port,
+                host,
+                port,
                 rejectUnauthorized: true
             }, () => {
                 console.log('✅ TLS 連線建立成功');
                 this.connected = true;
                 this.reconnectAttempts = 0;
-                this.isConnecting = false; // 解鎖
-                // 發送 ApplicationAuth 請求
-                this.sendApplicationAuth()
-                    .then(() => {
-                        this.startHeartbeat();
-                        resolve();
-                    })
-                    .catch((err) => {
-                        this.isConnecting = false; // 失敗時解鎖
-                        reject(err);
-                    });
+                this.isConnecting = false;
+
+                this.sendApplicationAuth().catch((err) => {
+                    this.isConnecting = false;
+                    this.emit('connect-error', err);
+                });
+
+                this.startHeartbeat();
             });
 
             this.socket.on('data', (data) => {
@@ -118,23 +142,15 @@ class CTraderConnection extends EventEmitter {
                 this.connected = false;
                 this.authenticated = false;
                 this.stopHeartbeat();
-                this.isConnecting = false; // 解鎖
+                this.isConnecting = false;
                 this.scheduleReconnect();
             });
 
             this.socket.on('error', (error) => {
                 console.error('❌ Socket 錯誤:', error.message);
-                this.isConnecting = false; // 解鎖
-                reject(error);
+                this.isConnecting = false;
+                this.emit('connect-error', error);
             });
-
-            // 連線逾時（10 秒）
-            setTimeout(() => {
-                if (!this.connected) {
-                    this.isConnecting = false; // 解鎖
-                    reject(new Error('連線逾時'));
-                }
-            }, 10000);
         });
     }
 
@@ -270,18 +286,15 @@ class CTraderConnection extends EventEmitter {
             console.log(`📨 收到訊息: ${payloadTypeName}`);
         }
 
-        // 處理回應
-        if (message.clientMsgId && this.pendingRequests.has(message.clientMsgId)) {
-            const { resolve } = this.pendingRequests.get(message.clientMsgId);
-            this.pendingRequests.delete(message.clientMsgId);
-            resolve(message);
-        }
-
         // 特殊訊息處理
         switch (payloadTypeName) {
             case 'ProtoOAApplicationAuthRes':
                 console.log('✅ Application Auth 成功');
                 this.emit('app-auth-success');
+                this.sendAccountAuth().catch((error) => {
+                    console.error('❌ Account Auth 請求失敗:', error.message);
+                    this.emit('connect-error', error);
+                });
                 break;
 
             case 'ProtoOAAccountAuthRes':
@@ -290,32 +303,46 @@ class CTraderConnection extends EventEmitter {
                 this.emit('account-auth-success');
                 break;
 
-            case 'ProtoOAErrorRes':
+            case 'ProtoOAErrorRes': {
                 const ErrorRes = this.proto.lookupType('ProtoOAErrorRes');
                 const errorPayload = ErrorRes.decode(message.payload);
                 console.error(`❌ API 錯誤: Code=${errorPayload.errorCode}, Desc=${errorPayload.description || '無描述'}, Maintenance=${errorPayload.maintenanceEndTimestamp || 'N/A'}`);
                 console.error(`   詳細: ${JSON.stringify(errorPayload)}`);
                 this.emit('api-error', errorPayload);
 
+                if (message.clientMsgId && this.pendingRequests.has(message.clientMsgId)) {
+                    const { reject } = this.pendingRequests.get(message.clientMsgId);
+                    this.pendingRequests.delete(message.clientMsgId);
+                    reject(new Error(errorPayload.description || `API 錯誤: ${errorPayload.errorCode}`));
+                }
+
                 // 自動重連機制：當偵測到帳戶未授權錯誤時，統一進入排程重連流程
                 if (errorPayload.description && errorPayload.description.includes('not authorized')) {
                     console.log('🔄 偵測到授權錯誤，將進入重連流程...');
                     this.authenticated = false;
                     this.disconnect();
-                    this.scheduleReconnect();
                 }
                 break;
+            }
 
-            case 'ProtoOAOrderErrorEvent':
+            case 'ProtoOAOrderErrorEvent': {
                 const OrderErrorEvent = this.proto.lookupType('ProtoOAOrderErrorEvent');
                 const orderError = OrderErrorEvent.decode(message.payload);
                 console.error(`❌ 訂單錯誤: ${orderError.errorCode} - ${orderError.description || '無描述'}`);
                 this.emit('order-error', orderError);
                 break;
+            }
 
             case 'ProtoHeartbeatEvent':
                 this.lastHeartbeat = Date.now();
                 break;
+        }
+
+        // 處理一般回應（錯誤回應已在上方 reject）
+        if (payloadTypeName !== 'ProtoOAErrorRes' && message.clientMsgId && this.pendingRequests.has(message.clientMsgId)) {
+            const { resolve } = this.pendingRequests.get(message.clientMsgId);
+            this.pendingRequests.delete(message.clientMsgId);
+            resolve(message);
         }
 
         // 發送給外部監聽器
@@ -363,15 +390,20 @@ class CTraderConnection extends EventEmitter {
 
     /** 排程重連 */
     scheduleReconnect() {
-        // 取消重連上限，進入無限重試模式，防止依賴進程重啟
+        if (this.reconnectTimeout || this.isConnecting) {
+            return;
+        }
+
         const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), MAX_RECONNECT_DELAY_MS);
         this.reconnectAttempts++;
 
         console.log(`🔄 將在 ${delay}ms 後重連 (第 ${this.reconnectAttempts} 次嘗試)...`);
 
         this.reconnectTimeout = setTimeout(() => {
+            this.reconnectTimeout = null;
             this.connect().catch((error) => {
                 console.error('重連失敗:', error.message);
+                this.emit('reconnect-failed', error);
             });
         }, delay);
     }
