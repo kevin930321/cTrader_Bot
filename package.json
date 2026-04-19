@@ -8,7 +8,6 @@
     "dev": "node trading-bot.js"
   },
   "dependencies": {
-    "ws": "^8.13.0",
     "node-cron": "^3.0.2",
     "express": "^4.18.2",
     "mongodb": "^5.0.0",

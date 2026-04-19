@@ -185,14 +185,13 @@ class TradingBot {
             if (totalTrades > 0 && totalTrades % 10 === 0) {
                 // 計算累計統計
                 const totalWinRate = ((this.engine.wins / totalTrades) * 100).toFixed(1);
-                const totalProfit = this.engine.trades.reduce((sum, t) => sum + (t.profit || 0), 0);
 
                 // 計算本期區間統計 (最近 10 次)
                 const periodWins = this.engine.wins - this.engine.lastReportWins;
                 const periodLosses = this.engine.losses - this.engine.lastReportLosses;
                 const periodTotal = periodWins + periodLosses;
                 const periodWinRate = periodTotal > 0 ? ((periodWins / periodTotal) * 100).toFixed(1) : '0.0';
-                const periodProfit = totalProfit - this.engine.lastReportProfit;
+                const periodProfit = this.engine.totalProfit - this.engine.lastReportProfit;
 
                 // 計算區間範圍
                 const fromTrade = totalTrades - 9;
@@ -208,7 +207,8 @@ class TradingBot {
                 // 更新追蹤變數供下次報告使用
                 this.engine.lastReportWins = this.engine.wins;
                 this.engine.lastReportLosses = this.engine.losses;
-                this.engine.lastReportProfit = totalProfit;
+                this.engine.lastReportProfit = this.engine.totalProfit;
+                this.engine.saveState(); // 持久化報告追蹤變數
             }
         });
 
@@ -344,7 +344,7 @@ class TradingBot {
 
             // 執行每日重置
             if (this.engine) {
-                this.resetDaily();
+                await this.resetDaily();
                 this.lastResetDate = today;
 
                 // 非休市日才嘗試取得基準點
@@ -471,19 +471,15 @@ cron.schedule('0,30 * * * * *', async () => {
 });
 
 // 訊號處理
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     console.log('\n👋 機器人關閉中 (SIGINT)...');
-    if (bot.connection) {
-        bot.connection.disconnect();
-    }
+    await bot.stop();
     process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     console.log('\n👋 機器人關閉中 (SIGTERM)...');
-    if (bot.connection) {
-        bot.connection.disconnect();
-    }
+    await bot.stop();
     process.exit(0);
 });
 

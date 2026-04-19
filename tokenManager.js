@@ -6,7 +6,7 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const { systemLogger } = require('./logger');
+
 
 const TOKEN_ENDPOINT = 'https://openapi.ctrader.com/apps/token';
 const TOKEN_REFRESH_BUFFER_MS = 24 * 60 * 60 * 1000; // 提前 1 天更新
@@ -141,10 +141,7 @@ class TokenManager {
 
         console.log('🔄 Token 自動更新已啟動');
 
-        // 立即檢查一次
-        this.checkAndRefresh().catch(e => console.error('Token 首次檢查失敗:', e.message));
-
-        // 每小時檢查
+        // 每小時檢查（init() 已在啟動前呼叫過 checkAndRefresh）
         this.checkInterval = setInterval(() => {
             this.checkAndRefresh().catch(e => console.error('Token 自動更新失敗:', e.message));
         }, TOKEN_CHECK_INTERVAL_MS);
