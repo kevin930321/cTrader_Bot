@@ -1,5 +1,5 @@
 /**
- * US30 Bot - 共用工具函數
+ * NAS100 Bot - 共用工具函數
  */
 
 const API_PRICE_MULTIPLIER = 100000;
@@ -8,8 +8,8 @@ const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 // 轉換 Protobuf Long 物件為 JavaScript Number
 function convertLongValue(value) {
     if (value === null || value === undefined) return null;
-    if (typeof value === "object" && value.toNumber) return value.toNumber();
-    return typeof value === "number" ? value : Number(value);
+    if (typeof value === 'object' && value.toNumber) return value.toNumber();
+    return typeof value === 'number' ? value : Number(value);
 }
 
 // Raw Price (API) -> 真實價格
@@ -24,14 +24,12 @@ function realToRawPrice(realPrice) {
 
 // 取得台北時間
 function getTaipeiTime() {
-    return new Date(
-        new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }),
-    );
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
 }
 
 // 取得台北時間日期字串 (YYYY-MM-DD)
 function getTaipeiDateString(date = new Date()) {
-    return date.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+    return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
 // 判斷美股夏令時間 (DST: 3月第2週日 ~ 11月第1週日)
@@ -58,5 +56,6 @@ module.exports = {
     realToRawPrice,
     getTaipeiTime,
     getTaipeiDateString,
-    isUsDst,
+    isUsDst
 };
+
