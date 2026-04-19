@@ -2,7 +2,7 @@
  * CTraderConnection - cTrader Open API 連線管理
  */
 
-const net = require('net');
+
 const tls = require('tls');
 const protobuf = require('protobufjs');
 const path = require('path');
@@ -385,9 +385,9 @@ class CTraderConnection extends EventEmitter {
 
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = null;
-        this.isConnecting = false; // 防止並行連線鎖
+            this.reconnectTimeout = null;
         }
+        this.isConnecting = false; // 無條件重置連線鎖
 
         if (this.socket) {
             this.socket.destroy();
@@ -458,7 +458,6 @@ class CTraderConnection extends EventEmitter {
                         .split('_')
                         .map(part => part.charAt(0) + part.slice(1).toLowerCase()) // Capitalize
                         .join('')
-                        .replace('Req', 'Req').replace('Res', 'Res') // Already capitalized
                         .replace(/^/, 'Proto'); // Prepend Proto
                     // Example: HEARTBEAT_EVENT -> HeartbeatEvent -> ProtoHeartbeatEvent
                 }
@@ -475,8 +474,7 @@ class CTraderConnection extends EventEmitter {
                             if (part === 'PROTO') return 'Proto';
                             return part.charAt(0) + part.slice(1).toLowerCase();
                         })
-                        .join('')
-                        .replace('Req', 'Req').replace('Res', 'Res').replace('Event', 'Event'); // 確保尾綴格式正確
+                        .join('');
                 }
             }
         }

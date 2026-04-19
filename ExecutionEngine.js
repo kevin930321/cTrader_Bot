@@ -5,15 +5,12 @@
 
 const EventEmitter = require('events');
 const { convertLongValue, rawToRealPrice, realToRawPrice, getTaipeiTime, isUsDst, API_PRICE_MULTIPLIER, TAIPEI_OFFSET_MS } = require('./utils');
-const { tradeLogger, logAudit } = require('./logger');
-const { OrderError, MarketDataError } = require('./errors');
+const { logAudit } = require('./logger');
 
-const PNL_DIVISOR = 10000;
+
 const VOLUME_DIVISOR = 100;
 const MONEY_DIGITS_DEFAULT = 2;
 const TRADE_HISTORY_MAX = 50;
-const SYMBOL_CACHE_TTL = 3600000;
-const ACCOUNT_CACHE_TTL = 300000;
 
 class ExecutionEngine extends EventEmitter {
     constructor(connection, config, db) {
@@ -48,6 +45,7 @@ class ExecutionEngine extends EventEmitter {
         this.wins = 0;
         this.losses = 0;
         this.trades = [];
+        this.totalProfit = 0; // 累計損益（運行總計，不受 trades 陣列上限影響）
         this.lastReportWins = 0;
         this.lastReportLosses = 0;
         this.lastReportProfit = 0;
@@ -77,6 +75,10 @@ class ExecutionEngine extends EventEmitter {
                 this.wins = state.wins || 0;
                 this.losses = state.losses || 0;
                 this.trades = state.trades || [];
+                this.totalProfit = state.totalProfit || 0;
+                this.lastReportWins = state.lastReportWins || 0;
+                this.lastReportLosses = state.lastReportLosses || 0;
+                this.lastReportProfit = state.lastReportProfit || 0;
                 this.todayTradeDone = state.todayTradeDone || false;
                 this.lastResetDate = state.lastResetDate || null; // 恢復重置日期
                 if (state.config) {
@@ -303,7 +305,13 @@ class ExecutionEngine extends EventEmitter {
             // 如果找不到精確匹配，嘗試模糊搜尋
             if (!symbol) {
                 console.warn(`⚠️ 找不到精確名稱 '${symbolName}'，嘗試搜尋替代名稱...`);
-                const candidates = ['US30', 'DJ30', 'Wall Street 30', 'WS30', 'US30.cash', 'DJ30.cash'];
+                // 根據設定的 symbol 動態產生候選列表
+                const baseName = symbolName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                const candidates = [
+                    symbolName,
+                    `${symbolName}.cash`,
+                    `${symbolName}.std`,
+                ];
 
                 for (const candidate of candidates) {
                     symbol = payload.symbol.find(s => s.symbolName.toUpperCase().includes(candidate.toUpperCase()));
@@ -346,9 +354,11 @@ class ExecutionEngine extends EventEmitter {
             } else {
                 console.error(`❌ 找不到 Symbol: ${symbolName} 且無合適替代品`);
 
-                // 列出建議
+                // 列出建議（根據設定的 symbol 名稱搜尋相似項目）
+                const searchTerms = symbolName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
                 const suggestions = payload.symbol
-                    .filter(s => s.symbolName.includes('NAS') || s.symbolName.includes('US100') || s.symbolName.includes('100'))
+                    .filter(s => s.symbolName.toUpperCase().includes(searchTerms) || 
+                                 s.symbolName.toUpperCase().includes(searchTerms.slice(0, 3)))
                     .map(s => `${s.symbolName}(${s.symbolId})`)
                     .join(', ');
 
@@ -361,11 +371,8 @@ class ExecutionEngine extends EventEmitter {
         } catch (error) {
             console.error('❌ 查詢 Symbol 資訊失敗:', error.message);
 
-            // Fallback: 如果查詢失敗且是標準 US30
-            if (symbolName === 'US30') {
-                console.warn('⚠️ API 查詢失敗，使用預設值嘗試...');
-                return { symbolId: 1, lotSize: 100, digits: 2 };
-            }
+            // 不使用 fallback 硬編碼值，避免送錯交易品種
+            console.error(`❌ 請確認 CTRADER_SYMBOL 環境變數設定的 '${symbolName}' 是否正確`);
             return null;
         }
     }
@@ -553,12 +560,19 @@ class ExecutionEngine extends EventEmitter {
         this.closedPositionIds.add(positionIdNorm);
 
         // 計算損益 (Net Profit = Gross Profit + Swap + Commission)
-        const netProfitRaw = (detail.grossProfit || 0) + (detail.swap || 0) + (detail.commission || 0);
-        const netProfit = netProfitRaw / PNL_DIVISOR;
-
-        // balance 使用 moneyDigits 計算
+        // 注意：這些欄位可能是 protobuf Long 物件，必須先轉為數字
+        const grossProfit = convertLongValue(detail.grossProfit) || 0;
+        const swap = convertLongValue(detail.swap) || 0;
+        const commission = convertLongValue(detail.commission) || 0;
         const moneyDigits = detail.moneyDigits || MONEY_DIGITS_DEFAULT;
-        const balance = (detail.balance || 0) / Math.pow(10, moneyDigits);
+        const moneyDivisor = Math.pow(10, moneyDigits);
+
+        const netProfitRaw = grossProfit + swap + commission;
+        const netProfit = netProfitRaw / moneyDivisor;
+
+        // balance 使用相同的 moneyDigits 計算
+        const rawBalance = convertLongValue(detail.balance) || 0;
+        const balance = rawBalance / moneyDivisor;
 
         console.log(`💰 交易平倉 ID: ${positionIdNorm} | 損益: $${netProfit.toFixed(2)} | 餘額: $${balance.toFixed(2)}`);
 
@@ -567,14 +581,20 @@ class ExecutionEngine extends EventEmitter {
         if (netProfit > 0) this.wins++;
         else if (netProfit < 0) this.losses++;
         // netProfit == 0 (打平) 不計入勝負
+        this.totalProfit += netProfit; // 更新累計損益
 
         // 記錄交易歷史
+        // 從快取持倉中取得原始方向（closing deal 的 tradeSide 是反向的）
+        const cachedPos = this.positions.find(p => p.id === positionIdNorm);
+        const positionType = cachedPos ? cachedPos.type :
+            (deal.tradeSide === 1 || deal.tradeSide === 'BUY' ? 'short' : 'long'); // closing BUY = 原始 short
+
         const tradeRecord = {
             id: positionId,
-            closeTime: new Date(deal.executionTimestamp),
+            closeTime: new Date(convertLongValue(deal.executionTimestamp)),
             profit: netProfit,
             balance: this.balance,
-            type: deal.tradeSide === 1 || deal.tradeSide === 'BUY' ? 'long' : 'short' // 1=BUY, 2=SELL
+            type: positionType
         };
         this.trades.unshift(tradeRecord);
         if (this.trades.length > TRADE_HISTORY_MAX) this.trades.pop();
@@ -732,7 +752,7 @@ class ExecutionEngine extends EventEmitter {
                 tradeSide: type === 'long' ? 1 : 2, // BUY=1, SELL=2
                 volume: volume,
                 // 不帶 SL/TP，成交後設定
-                label: 'US30_MR'
+                label: `${this.config.market.symbol}_MR`
             });
 
             const currentPriceReal = rawToRealPrice(this.currentPrice);
@@ -823,6 +843,10 @@ class ExecutionEngine extends EventEmitter {
                 wins: this.wins,
                 losses: this.losses,
                 trades: this.trades,
+                totalProfit: this.totalProfit,
+                lastReportWins: this.lastReportWins,
+                lastReportLosses: this.lastReportLosses,
+                lastReportProfit: this.lastReportProfit,
                 todayTradeDone: this.todayTradeDone,
                 lastResetDate: this.lastResetDate,
                 config: {

@@ -4,462 +4,578 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NAS100 cTrader Bot Dashboard</title>
+    <title>Trading Bot Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-color: #f8fafc;
-            --accent-color: #3b82f6;
-            --success-color: #22c55e;
-            --danger-color: #ef4444;
-            --warning-color: #eab308;
-            --purple-color: #8b5cf6;
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-card-hover: rgba(30, 41, 59, 0.8);
+            --bg-inset: rgba(0, 0, 0, 0.3);
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-glow: rgba(99, 102, 241, 0.3);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #6366f1;
+            --accent-light: #818cf8;
+            --green: #10b981;
+            --green-soft: rgba(16, 185, 129, 0.15);
+            --red: #ef4444;
+            --red-soft: rgba(239, 68, 68, 0.15);
+            --amber: #f59e0b;
+            --amber-soft: rgba(245, 158, 11, 0.15);
+            --blue: #3b82f6;
+            --blue-soft: rgba(59, 130, 246, 0.15);
+            --purple: #8b5cf6;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
+            --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.08);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         * {
             box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 20px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        .container {
-            max-width: 800px;
+        /* Background ambient */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+                        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+                        radial-gradient(ellipse at 50% 80%, rgba(59, 130, 246, 0.03) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 960px;
             margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+            padding: 20px 16px 40px;
         }
 
+        /* ═══ Header ═══ */
         .header {
             text-align: center;
-            padding: 20px;
-            background: var(--card-bg);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 28px 24px 20px;
+            margin-bottom: 20px;
+            position: relative;
         }
 
-        .header h1 {
-            margin: 0;
+        .header-title {
             font-size: 1.5rem;
-            background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #818cf8 0%, #6366f1 30%, #a78bfa 70%, #c084fc 100%);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
-            color: transparent;
             display: inline-block;
+            margin-bottom: 4px;
         }
 
-        .status-row {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
+        .header-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
             font-weight: 500;
         }
 
-        .status-connected {
-            background: rgba(34, 197, 94, 0.2);
-            color: var(--success-color);
+        .header-clock {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 6px;
         }
 
-        .status-disconnected {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--danger-color);
+        /* ═══ Status Pills ═══ */
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 14px;
         }
 
-        .status-watching {
-            background: rgba(59, 130, 246, 0.2);
-            color: var(--accent-color);
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            backdrop-filter: blur(8px);
+            transition: var(--transition);
+            border: 1px solid transparent;
         }
 
-        .status-idle {
-            background: rgba(100, 116, 139, 0.2);
-            color: #94a3b8;
+        .pill-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
         }
 
-        .status-paused {
-            background: rgba(249, 115, 22, 0.2);
-            color: #f97316;
+        .pill-green { background: var(--green-soft); color: var(--green); border-color: rgba(16, 185, 129, 0.2); }
+        .pill-green .pill-dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse-dot 2s infinite; }
+        .pill-red { background: var(--red-soft); color: var(--red); border-color: rgba(239, 68, 68, 0.2); }
+        .pill-red .pill-dot { background: var(--red); }
+        .pill-blue { background: var(--blue-soft); color: var(--blue); border-color: rgba(59, 130, 246, 0.2); }
+        .pill-blue .pill-dot { background: var(--blue); box-shadow: 0 0 6px var(--blue); animation: pulse-dot 1.5s infinite; }
+        .pill-amber { background: var(--amber-soft); color: var(--amber); border-color: rgba(245, 158, 11, 0.2); }
+        .pill-amber .pill-dot { background: var(--amber); }
+        .pill-muted { background: rgba(100, 116, 139, 0.12); color: var(--text-muted); border-color: rgba(100, 116, 139, 0.15); }
+        .pill-muted .pill-dot { background: var(--text-muted); }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
         }
 
-        .price-display {
-            text-align: center;
-            font-size: 3rem;
-            font-family: 'Roboto Mono', monospace;
-            margin: 10px 0;
-            font-weight: 700;
-        }
-
+        /* ═══ Cards ═══ */
         .card {
-            background: var(--card-bg);
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
             padding: 20px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-card);
+            transition: var(--transition);
         }
 
-        .card-label {
-            font-size: 0.9rem;
-            color: #94a3b8;
-            margin-bottom: 12px;
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.1);
+            box-shadow: var(--shadow-card), var(--shadow-glow);
+        }
+
+        .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 16px;
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 12px;
-        }
-
-        .stat-item {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 12px;
-            border-radius: 8px;
-            text-align: center;
-        }
-
-        .stat-label {
-            font-size: 0.75rem;
-            color: #64748b;
-            margin-bottom: 4px;
-        }
-
-        .stat-value {
-            font-size: 1.2rem;
-            font-weight: 700;
-        }
-
-        .text-green {
-            color: var(--success-color);
-        }
-
-        .text-red {
-            color: var(--danger-color);
-        }
-
-        .text-blue {
-            color: var(--accent-color);
-        }
-
-        .params-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            gap: 12px;
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 0.7rem;
-            color: #64748b;
-            margin-bottom: 4px;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #334155;
-            background: #0f172a;
-            color: white;
-            font-size: 0.9rem;
-        }
-
-        button {
-            padding: 10px 16px;
-            border: none;
-            border-radius: 8px;
+        .card-title {
+            font-size: 0.82rem;
             font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s, transform 0.1s;
-            font-size: 0.9rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
-        button:hover {
-            opacity: 0.9;
+        /* ═══ Price Hero ═══ */
+        .price-hero {
+            text-align: center;
+            padding: 30px 20px;
         }
 
-        button:active {
-            transform: scale(0.98);
+        .price-hero .price-main {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 3.2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            transition: color 0.3s;
+            line-height: 1.1;
         }
 
-        .btn-primary {
-            background: var(--accent-color);
-            color: white;
-        }
-
-        .btn-danger {
-            background: var(--danger-color);
-            color: white;
-        }
-
-        .btn-warning {
-            background: var(--warning-color);
-            color: black;
-        }
-
-        .btn-success {
-            background: var(--success-color);
-            color: white;
-        }
-
-        .btn-pause {
-            background: #f97316;
-            color: white;
-        }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--accent-color);
-            color: var(--accent-color);
-        }
-
-        .actions-row {
+        .price-hero .price-sub {
+            margin-top: 10px;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
             display: flex;
-            gap: 10px;
+            justify-content: center;
+            gap: 20px;
             flex-wrap: wrap;
         }
 
-        .position-card {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 12px;
-            border-radius: 8px;
-            border-left: 4px solid;
-            display: flex;
-            justify-content: space-between;
+        .price-hero .price-tag {
+            display: inline-flex;
             align-items: center;
-            margin-bottom: 8px;
-            gap: 12px;
+            gap: 6px;
         }
 
-        .position-long {
-            border-left-color: var(--success-color);
+        .price-hero .price-tag-label {
+            color: var(--text-muted);
         }
 
-        .position-short {
-            border-left-color: var(--danger-color);
-        }
-
-        .position-info {
-            flex: 1;
-        }
-
-        .position-type {
-            font-weight: 700;
-            font-size: 1.1rem;
-        }
-
-        .position-details {
-            font-size: 0.85rem;
-            color: #94a3b8;
-            margin-top: 4px;
-        }
-
-        .position-pnl {
-            text-align: right;
-            flex-shrink: 0;
-        }
-
-        .pnl-value {
-            font-size: 1.1rem;
-            font-weight: 700;
-        }
-
-        .position-id {
-            font-size: 0.7rem;
-            color: #64748b;
-            margin-top: 2px;
-        }
-
-        .btn-close-position {
-            background: #ef4444;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.8rem;
+        .price-hero .price-tag-value {
+            font-family: 'JetBrains Mono', monospace;
             font-weight: 600;
-            flex-shrink: 0;
+            color: var(--text-primary);
         }
 
-        .btn-close-position:hover {
-            background: #dc2626;
+        .price-flash-up { animation: flash-up 0.4s ease; }
+        .price-flash-down { animation: flash-down 0.4s ease; }
+        @keyframes flash-up { 0% { color: var(--green); } 100% { color: var(--text-primary); } }
+        @keyframes flash-down { 0% { color: var(--red); } 100% { color: var(--text-primary); } }
+
+        /* ═══ Stats Grid ═══ */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
         }
 
-        .log-container {
-            background: #000;
-            padding: 15px;
-            border-radius: 12px;
-            font-family: 'Roboto Mono', monospace;
-            height: 200px;
-            overflow-y: auto;
-            font-size: 0.8rem;
-            color: #33ff33;
-        }
-
-        .log-container::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .log-container::-webkit-scrollbar-track {
-            background: #1a1a1a;
-        }
-
-        .log-container::-webkit-scrollbar-thumb {
-            background: #333;
-            border-radius: 3px;
-        }
-
-        .no-positions {
+        .stat-cell {
+            background: var(--bg-inset);
+            border-radius: var(--radius-sm);
+            padding: 14px 12px;
             text-align: center;
-            color: #64748b;
-            padding: 20px;
-            font-size: 0.9rem;
+            border: 1px solid var(--border-subtle);
+            transition: var(--transition);
+        }
+
+        .stat-cell:hover {
+            border-color: rgba(255, 255, 255, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .stat-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.15rem;
+            font-weight: 700;
+        }
+
+        .c-green { color: var(--green); }
+        .c-red { color: var(--red); }
+        .c-blue { color: var(--blue); }
+        .c-amber { color: var(--amber); }
+        .c-purple { color: var(--purple); }
+
+        /* ═══ Equity Chart ═══ */
+        .chart-wrap {
+            position: relative;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            background: var(--bg-inset);
+            border: 1px solid var(--border-subtle);
         }
 
         #equity-chart {
             width: 100%;
-            height: 200px;
-            border-radius: 8px;
+            height: 220px;
             display: block;
+            cursor: crosshair;
         }
 
-        @media (max-width: 600px) {
-            .price-display {
-                font-size: 2.5rem;
-            }
+        /* ═══ Params Grid ═══ */
+        .params-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
 
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+        .param-group label {
+            display: block;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .param-group input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--bg-inset);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .param-group input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+
+        /* ═══ Buttons ═══ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 9px 16px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+
+        .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+        .btn:active { transform: translateY(0) scale(0.98); }
+
+        .btn-accent { background: var(--accent); color: #fff; }
+        .btn-green { background: var(--green); color: #fff; }
+        .btn-red { background: var(--red); color: #fff; }
+        .btn-amber { background: var(--amber); color: #000; }
+        .btn-orange { background: #f97316; color: #fff; }
+        .btn-sm { padding: 6px 12px; font-size: 0.75rem; }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent-light);
+        }
+
+        .actions-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ═══ Positions ═══ */
+        .pos-card {
+            background: var(--bg-inset);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: var(--transition);
+        }
+
+        .pos-card:hover { border-color: rgba(255, 255, 255, 0.12); }
+
+        .pos-side {
+            width: 4px;
+            height: 44px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .pos-side-long { background: var(--green); box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
+        .pos-side-short { background: var(--red); box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+
+        .pos-info { flex: 1; min-width: 0; }
+
+        .pos-type {
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .pos-detail {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 3px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .pos-pnl {
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .pos-pnl-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .pos-pnl-id {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .pos-close-btn {
+            background: var(--red-soft);
+            color: var(--red);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            flex-shrink: 0;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        .pos-close-btn:hover {
+            background: var(--red);
+            color: #fff;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 28px 20px;
+            font-size: 0.88rem;
+        }
+
+        /* ═══ Log Console ═══ */
+        .log-console {
+            background: #000;
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            line-height: 1.6;
+            color: #4ade80;
+            height: 220px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .log-console::-webkit-scrollbar { width: 5px; }
+        .log-console::-webkit-scrollbar-track { background: transparent; }
+        .log-console::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+        /* ═══ Responsive ═══ */
+        @media (max-width: 640px) {
+            .price-hero .price-main { font-size: 2.4rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .params-grid { grid-template-columns: repeat(2, 1fr); }
+            .header-title { font-size: 1.25rem; }
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
+    <div class="app">
+        <!-- Header -->
         <div class="header">
-            <h1>🤖 NAS100 cTrader Bot</h1>
-            <div class="status-row">
-                <span id="connection-status" class="status-badge status-disconnected">⚪ 連線中...</span>
-                <span id="watching-status" class="status-badge status-idle">👁️ 待機</span>
-                <span id="trade-status" class="status-badge status-idle">📊 今日未交易</span>
-                <span id="pause-status" class="status-badge" style="display:none">⏸️ 交易暫停</span>
+            <div class="header-title">⚡ Trading Bot</div>
+            <div class="header-sub">cTrader Open API · Automated Execution</div>
+            <div class="header-clock" id="clock">--:--:--</div>
+            <div class="status-bar">
+                <span id="conn-pill" class="pill pill-muted"><span class="pill-dot"></span>連線中...</span>
+                <span id="watch-pill" class="pill pill-muted"><span class="pill-dot"></span>待機</span>
+                <span id="trade-pill" class="pill pill-muted"><span class="pill-dot"></span>未交易</span>
+                <span id="pause-pill" class="pill pill-amber" style="display:none"><span class="pill-dot"></span>暫停中</span>
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-label">即時價格</div>
-            <div class="price-display" id="current-price">--</div>
-            <div style="text-align: center; font-size: 0.95rem; color: #94a3b8;">
-                基準點: <span id="open-price" style="color: white; font-weight: 600;">--</span>
-                &nbsp;|&nbsp;
-                價差: <span id="price-diff" style="font-weight: 600;">--</span>
+        <!-- Price -->
+        <div class="card price-hero">
+            <div class="price-main" id="current-price">--</div>
+            <div class="price-sub">
+                <span class="price-tag">
+                    <span class="price-tag-label">基準點</span>
+                    <span class="price-tag-value" id="open-price">--</span>
+                </span>
+                <span class="price-tag">
+                    <span class="price-tag-label">價差</span>
+                    <span class="price-tag-value" id="price-diff">--</span>
+                </span>
+                <span class="price-tag">
+                    <span class="price-tag-label">Bid</span>
+                    <span class="price-tag-value" id="bid-price">--</span>
+                </span>
+                <span class="price-tag">
+                    <span class="price-tag-label">Ask</span>
+                    <span class="price-tag-value" id="ask-price">--</span>
+                </span>
             </div>
         </div>
 
+        <!-- Account Stats -->
         <div class="card">
-            <div class="card-label">📊 帳戶統計</div>
+            <div class="card-header"><span class="card-title">📊 帳戶概覽</span></div>
             <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-label">餘額</div>
-                    <div class="stat-value text-green" id="balance">$--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">淨值</div>
-                    <div class="stat-value" id="equity">$--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">已用保證金</div>
-                    <div class="stat-value" id="usedMargin">$--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">可用保證金</div>
-                    <div class="stat-value" id="freeMargin">$--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">勝率</div>
-                    <div class="stat-value" id="win-rate">--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">總勝場</div>
-                    <div class="stat-value text-green" id="wins">0</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">總敗場</div>
-                    <div class="stat-value text-red" id="losses">0</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">槓桿</div>
-                    <div class="stat-value" id="leverage">--</div>
-                </div>
+                <div class="stat-cell"><div class="stat-label">餘額</div><div class="stat-value c-green" id="balance">$--</div></div>
+                <div class="stat-cell"><div class="stat-label">淨值</div><div class="stat-value" id="equity">$--</div></div>
+                <div class="stat-cell"><div class="stat-label">已用保證金</div><div class="stat-value" id="usedMargin">$--</div></div>
+                <div class="stat-cell"><div class="stat-label">可用保證金</div><div class="stat-value" id="freeMargin">$--</div></div>
+                <div class="stat-cell"><div class="stat-label">勝率</div><div class="stat-value c-purple" id="win-rate">--</div></div>
+                <div class="stat-cell"><div class="stat-label">勝場</div><div class="stat-value c-green" id="wins">0</div></div>
+                <div class="stat-cell"><div class="stat-label">敗場</div><div class="stat-value c-red" id="losses">0</div></div>
+                <div class="stat-cell"><div class="stat-label">槓桿</div><div class="stat-value" id="leverage">--</div></div>
             </div>
         </div>
 
+        <!-- Equity Chart -->
         <div class="card">
-            <div class="card-label">📈 績效曲線</div>
-            <canvas id="equity-chart"></canvas>
-        </div>
-
-        <div class="card">
-            <div class="card-label">⚙️ 策略參數<button class="btn-primary" onclick="saveConfig()"
-                    style="padding: 6px 12px; font-size: 0.8rem;">💾 儲存</button></div>
-            <div class="params-grid">
-                <div class="form-group"><label>Entry Offset</label><input type="number" id="cfg-entryOffset" value="10">
-                </div>
-                <div class="form-group"><label>Long TP</label><input type="number" id="cfg-longTP" value="8"></div>
-                <div class="form-group"><label>Short TP</label><input type="number" id="cfg-shortTP" value="5"></div>
-                <div class="form-group"><label>Long SL</label><input type="number" id="cfg-longSL" value="1000"></div>
-                <div class="form-group"><label>Short SL</label><input type="number" id="cfg-shortSL" value="1000"></div>
-                <div class="form-group"><label>Lot Size</label><input type="number" id="cfg-lotSize" value="0.1"
-                        step="0.01"></div>
-                <div class="form-group"><label>盯盤開始 (分)</label><input type="number" id="cfg-minsAfterOpen" value="1"
-                        min="0" max="60"></div>
-                <div class="form-group"><label>基準偏移 (分)</label><input type="number" id="cfg-baselineOffsetMinutes"
-                        value="0" min="0" max="60"></div>
+            <div class="card-header"><span class="card-title">📈 績效曲線</span></div>
+            <div class="chart-wrap">
+                <canvas id="equity-chart"></canvas>
             </div>
         </div>
 
+        <!-- Positions -->
         <div class="card">
-            <div class="card-label">🎮 操作控制</div>
-            <div class="actions-row">
-                <button class="btn-primary" onclick="toggleWatch()">👁️ 切換盯盤</button>
-                <button id="pause-btn" class="btn-pause" onclick="togglePause()">⏸️ 暫停交易</button>
-                <button class="btn-success" onclick="fetchOpenPrice()">📊 取得基準點</button>
-                <button class="btn-warning" onclick="resetDaily()">🔄 重置今日狀態</button>
-                <button class="btn-danger" onclick="closeAllPositions()">⚠️ 緊急平倉</button>
+            <div class="card-header">
+                <span class="card-title">💼 持倉 (<span id="position-count">0</span>)</span>
             </div>
-        </div>
-
-        <div class="card">
-            <div class="card-label"><span>📈 當前持倉 (<span id="position-count">0</span>)</span></div>
             <div id="positions-list">
-                <div class="no-positions">目前無持倉</div>
+                <div class="empty-state">目前無持倉</div>
             </div>
         </div>
 
+        <!-- Controls -->
         <div class="card">
-            <div class="card-label">📜 即時日誌</div>
-            <div class="log-container" id="logs">
+            <div class="card-header"><span class="card-title">🎮 操作控制</span></div>
+            <div class="actions-row">
+                <button class="btn btn-accent" onclick="toggleWatch()">👁️ 切換盯盤</button>
+                <button id="pause-btn" class="btn btn-orange" onclick="togglePause()">⏸️ 暫停交易</button>
+                <button class="btn btn-green" onclick="fetchOpenPrice()">📊 取得基準點</button>
+                <button class="btn btn-amber" onclick="resetDaily()">🔄 重置今日</button>
+                <button class="btn btn-red" onclick="closeAllPositions()">⚠️ 緊急平倉</button>
+            </div>
+        </div>
+
+        <!-- Strategy Params -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">⚙️ 策略參數</span>
+                <button class="btn btn-accent btn-sm" onclick="saveConfig()">💾 儲存</button>
+            </div>
+            <div class="params-grid">
+                <div class="param-group"><label>Entry Offset</label><input type="number" id="cfg-entryOffset" value="10"></div>
+                <div class="param-group"><label>Long TP</label><input type="number" id="cfg-longTP" value="8"></div>
+                <div class="param-group"><label>Short TP</label><input type="number" id="cfg-shortTP" value="5"></div>
+                <div class="param-group"><label>Long SL</label><input type="number" id="cfg-longSL" value="1000"></div>
+                <div class="param-group"><label>Short SL</label><input type="number" id="cfg-shortSL" value="1000"></div>
+                <div class="param-group"><label>Lot Size</label><input type="number" id="cfg-lotSize" value="0.1" step="0.01"></div>
+                <div class="param-group"><label>盯盤開始 (分)</label><input type="number" id="cfg-minsAfterOpen" value="1" min="0" max="60"></div>
+                <div class="param-group"><label>基準偏移 (分)</label><input type="number" id="cfg-baselineOffsetMinutes" value="0" min="0" max="60"></div>
+            </div>
+        </div>
+
+        <!-- Logs -->
+        <div class="card">
+            <div class="card-header"><span class="card-title">📜 即時日誌</span></div>
+            <div class="log-console" id="logs">
                 <div>等待日誌...</div>
             </div>
         </div>
@@ -468,271 +584,306 @@
     <script>
         const API_URL = '/api';
         const PRICE_MULTIPLIER = 100000;
-        let socket = null, socketConnected = false, lastLogFetch = 0, equityChart = null;
+        let socket = null, socketConnected = false, lastLogFetch = 0;
+        let lastPrice = null;
 
-        // 節流函數
-        function throttle(func, limit) {
-            let inThrottle;
-            return function (...args) {
-                if (!inThrottle) { func.apply(this, args); inThrottle = true; setTimeout(() => inThrottle = false, limit); }
+        // ═══ Utilities ═══
+        function throttle(fn, ms) {
+            let t; return (...a) => { if (!t) { fn(...a); t = true; setTimeout(() => t = false, ms); } };
+        }
+
+        function formatPnL(pnl) {
+            if (pnl == null) return { text: '--', color: 'var(--text-muted)' };
+            return {
+                text: (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2),
+                color: pnl >= 0 ? 'var(--green)' : 'var(--red)'
             };
         }
 
-        // 格式化損益
-        function formatPnL(pnl) {
-            if (pnl == null) return { text: '--', color: '#94a3b8' };
-            return { text: (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2), color: pnl >= 0 ? '#22c55e' : '#ef4444' };
+        // ═══ Clock ═══
+        function updateClock() {
+            const now = new Date();
+            const tp = new Intl.DateTimeFormat('zh-TW', {
+                timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+            }).format(now);
+            document.getElementById('clock').textContent = '🕒 台北時間 ' + tp;
         }
+        setInterval(updateClock, 1000);
+        updateClock();
 
-        // 持倉卡片模板
-        function renderPositionCard(pos) {
-            const typeClass = pos.type === 'long' ? 'position-long' : 'position-short';
-            const typeIcon = pos.type === 'long' ? '📈' : '📉';
+        // ═══ Positions ═══
+        function renderPosition(pos) {
+            const isLong = pos.type === 'long';
             const pnl = formatPnL(pos.pnl);
-            return `<div class="position-card ${typeClass}">
-                <div class="position-info"><div class="position-type">${typeIcon} ${pos.type.toUpperCase()}</div>
-                <div class="position-details">Entry: ${pos.entryPrice?.toFixed(2) ?? '--'} | Vol: ${pos.volume?.toFixed(2) ?? '--'}</div></div>
-                <div class="position-pnl"><div class="pnl-value" style="color: ${pnl.color}">${pnl.text}</div><div class="position-id">ID: ${pos.id ?? '--'}</div></div>
-                <button class="btn-close-position" onclick="closePosition(${pos.id})">平倉</button></div>`;
+            return `<div class="pos-card">
+                <div class="pos-side ${isLong ? 'pos-side-long' : 'pos-side-short'}"></div>
+                <div class="pos-info">
+                    <div class="pos-type">${isLong ? '📈' : '📉'} ${pos.type.toUpperCase()}</div>
+                    <div class="pos-detail">Entry: ${pos.entryPrice?.toFixed(2) ?? '--'} · Vol: ${pos.volume?.toFixed(2) ?? '--'}</div>
+                </div>
+                <div class="pos-pnl">
+                    <div class="pos-pnl-value" style="color:${pnl.color}">${pnl.text}</div>
+                    <div class="pos-pnl-id">ID: ${pos.id ?? '--'}</div>
+                </div>
+                <button class="pos-close-btn" onclick="closePosition(${pos.id})">平倉</button>
+            </div>`;
         }
 
-        function updatePositionsList(positions) {
+        function updatePositions(positions) {
             document.getElementById('position-count').textContent = positions.length;
             document.getElementById('positions-list').innerHTML = positions.length === 0
-                ? '<div class="no-positions">目前無持倉</div>'
-                : positions.map(renderPositionCard).join('');
+                ? '<div class="empty-state">目前無持倉</div>'
+                : positions.map(renderPosition).join('');
         }
 
-        // 績效圖表 (Canvas 風格)
-        let chartData = null;
-        let chartConfig = null;
+        // ═══ Equity Chart ═══
+        let chartState = null;
 
-        function initEquityChart() {
-            const canvas = document.getElementById('equity-chart');
-            if (!canvas) return;
-
-            // 初始化 canvas 尺寸並繪製空白背景
-            canvas.width = canvas.offsetWidth || 600;
-            canvas.height = 200;
-            const ctx = canvas.getContext('2d');
-
-            // 繪製深色背景
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 顯示提示文字
+        function initChart() {
+            const c = document.getElementById('equity-chart');
+            if (!c) return;
+            c.width = c.offsetWidth * (window.devicePixelRatio || 1);
+            c.height = 220 * (window.devicePixelRatio || 1);
+            c.style.width = c.offsetWidth + 'px';
+            c.style.height = '220px';
+            const ctx = c.getContext('2d');
+            ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+            ctx.fillStyle = '#0a0e1a';
+            ctx.fillRect(0, 0, c.offsetWidth, 220);
             ctx.fillStyle = '#64748b';
-            ctx.font = '14px sans-serif';
+            ctx.font = '13px Inter, sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('等待交易數據...', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('等待交易數據...', c.offsetWidth / 2, 110);
         }
 
-        function updateEquityChart(trades) {
+        function drawChart(trades) {
             if (!trades?.length) return;
             const canvas = document.getElementById('equity-chart');
             if (!canvas) return;
-            const ctx = canvas.getContext('2d');
 
-            // 設定 canvas 尺寸
-            canvas.width = canvas.offsetWidth || 600;
-            canvas.height = 200;
+            const dpr = window.devicePixelRatio || 1;
+            const w = canvas.offsetWidth;
+            const h = 220;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
 
             const sorted = [...trades].reverse();
-            const values = sorted.map(t => t.balance);
+            const vals = sorted.map(t => t.balance);
+            chartState = { vals, sorted, w, h };
 
-            const width = canvas.width;
-            const height = canvas.height;
-            const padding = 45;
+            renderChart(ctx, chartState);
 
-            const minVal = Math.min(...values);
-            const maxVal = Math.max(...values);
-            const range = maxVal - minVal || 1;
-
-            chartData = { values, sorted };
-            chartConfig = { width, height, padding, minVal, maxVal, range };
-
-            drawChartBase(ctx, chartData, chartConfig);
-
-            // 滑鼠事件
-            canvas.onmousemove = (e) => {
-                const rect = canvas.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                drawChartBase(ctx, chartData, chartConfig);
-                drawCrosshair(ctx, mouseX, mouseY, chartData, chartConfig);
+            canvas.onmousemove = e => {
+                const r = canvas.getBoundingClientRect();
+                renderChart(ctx, chartState, e.clientX - r.left, e.clientY - r.top);
             };
-            canvas.onmouseleave = () => drawChartBase(ctx, chartData, chartConfig);
+            canvas.onmouseleave = () => renderChart(ctx, chartState);
         }
 
-        function drawChartBase(ctx, data, config) {
-            const { values } = data;
-            const { width, height, padding, minVal, maxVal, range } = config;
+        function renderChart(ctx, s, mx, my) {
+            const { vals, sorted, w, h } = s;
+            const pad = { t: 20, r: 15, b: 30, l: 50 };
+            const cw = w - pad.l - pad.r;
+            const ch = h - pad.t - pad.b;
 
-            // 清空畫布
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, width, height);
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = '#0a0e1a';
+            ctx.fillRect(0, 0, w, h);
 
-            if (values.length < 2) {
+            if (vals.length < 2) {
                 ctx.fillStyle = '#64748b';
-                ctx.font = '14px sans-serif';
+                ctx.font = '13px Inter';
                 ctx.textAlign = 'center';
-                ctx.fillText('需要至少 2 筆交易數據', width / 2, height / 2);
+                ctx.fillText('需要至少 2 筆交易', w / 2, h / 2);
                 return;
             }
 
-            // 繪製填充區域
-            const step = (width - padding * 2) / (values.length - 1);
+            const min = Math.min(...vals);
+            const max = Math.max(...vals);
+            const range = max - min || 1;
+            const step = cw / (vals.length - 1);
+
+            const getX = i => pad.l + i * step;
+            const getY = v => pad.t + ch - ((v - min) / range) * ch;
+
+            // Grid lines
+            ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = pad.t + (ch / 4) * i;
+                ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+            }
+
+            // Gradient fill
+            const grad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+            grad.addColorStop(0, 'rgba(99, 102, 241, 0.25)');
+            grad.addColorStop(1, 'rgba(99, 102, 241, 0.01)');
             ctx.beginPath();
-            ctx.moveTo(padding, height - padding);
-            values.forEach((v, i) => {
-                const x = padding + i * step;
-                const y = height - padding - ((v - minVal) / range) * (height - padding * 2);
-                ctx.lineTo(x, y);
-            });
-            ctx.lineTo(padding + (values.length - 1) * step, height - padding);
+            ctx.moveTo(getX(0), h - pad.b);
+            vals.forEach((v, i) => ctx.lineTo(getX(i), getY(v)));
+            ctx.lineTo(getX(vals.length - 1), h - pad.b);
             ctx.closePath();
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+            ctx.fillStyle = grad;
             ctx.fill();
 
-            // 繪製曲線
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 2;
+            // Line
+            ctx.strokeStyle = '#6366f1';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
             ctx.beginPath();
-            values.forEach((v, i) => {
-                const x = padding + i * step;
-                const y = height - padding - ((v - minVal) / range) * (height - padding * 2);
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
+            vals.forEach((v, i) => { i === 0 ? ctx.moveTo(getX(i), getY(v)) : ctx.lineTo(getX(i), getY(v)); });
             ctx.stroke();
 
-            // 繪製數據點
-            values.forEach((v, i) => {
-                const x = padding + i * step;
-                const y = height - padding - ((v - minVal) / range) * (height - padding * 2);
+            // Dots
+            vals.forEach((v, i) => {
                 ctx.beginPath();
-                ctx.arc(x, y, 3, 0, Math.PI * 2);
-                ctx.fillStyle = '#3b82f6';
+                ctx.arc(getX(i), getY(v), 3, 0, Math.PI * 2);
+                ctx.fillStyle = sorted[i]?.profit >= 0 ? '#10b981' : '#ef4444';
                 ctx.fill();
             });
 
-            // Y 軸標籤
+            // Y labels
             ctx.fillStyle = '#64748b';
-            ctx.font = '11px sans-serif';
-            ctx.textAlign = 'left';
-            ctx.fillText('$' + maxVal.toFixed(0), 5, padding);
-            ctx.fillText('$' + minVal.toFixed(0), 5, height - padding + 15);
+            ctx.font = '10px JetBrains Mono';
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 4; i++) {
+                const v = min + (range / 4) * (4 - i);
+                ctx.fillText('$' + v.toFixed(0), pad.l - 6, pad.t + (ch / 4) * i + 4);
+            }
 
-            // X 軸標籤
+            // X labels
             ctx.textAlign = 'center';
-            ctx.fillText('#1', padding, height - 5);
-            ctx.fillText('#' + values.length, width - padding, height - 5);
+            ctx.fillText('#1', getX(0), h - 8);
+            ctx.fillText('#' + vals.length, getX(vals.length - 1), h - 8);
+
+            // Crosshair
+            if (mx !== undefined && mx >= pad.l && mx <= w - pad.r && my >= pad.t && my <= h - pad.b) {
+                const idx = Math.max(0, Math.min(Math.round((mx - pad.l) / step), vals.length - 1));
+                const cx = getX(idx);
+                const cy = getY(vals[idx]);
+
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(cx, pad.t); ctx.lineTo(cx, h - pad.b); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(pad.l, my); ctx.lineTo(w - pad.r, my); ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Highlight dot
+                ctx.beginPath();
+                ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#6366f1';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Tooltip
+                const trade = sorted[idx];
+                const bw = 135, bh = 52;
+                let bx = cx + 12; if (bx + bw > w - 5) bx = cx - bw - 12;
+                let by = cy - bh / 2; by = Math.max(5, Math.min(by, h - bh - 5));
+
+                ctx.fillStyle = 'rgba(17, 24, 39, 0.95)';
+                ctx.beginPath();
+                ctx.roundRect(bx, by, bw, bh, 6);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                ctx.font = 'bold 11px JetBrains Mono';
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText(`#${idx + 1}  ${trade?.type?.toUpperCase() || ''}`, bx + 8, by + 17);
+
+                ctx.fillStyle = '#f1f5f9';
+                ctx.fillText(`$${vals[idx].toFixed(2)}`, bx + 8, by + 33);
+
+                if (trade?.profit != null) {
+                    const pColor = trade.profit >= 0 ? '#10b981' : '#ef4444';
+                    ctx.fillStyle = pColor;
+                    ctx.font = '10px JetBrains Mono';
+                    ctx.fillText((trade.profit >= 0 ? '+' : '') + '$' + trade.profit.toFixed(2), bx + 8, by + 46);
+                }
+            }
         }
 
-        function drawCrosshair(ctx, mouseX, mouseY, data, config) {
-            const { values, sorted } = data;
-            const { width, height, padding, minVal, range } = config;
-
-            if (mouseX < padding || mouseX > width - padding || mouseY < padding || mouseY > height - padding) return;
-
-            const totalPoints = values.length;
-            const step = (width - padding * 2) / (totalPoints - 1);
-            const index = Math.round((mouseX - padding) / step);
-            const clampedIndex = Math.max(0, Math.min(index, totalPoints - 1));
-            const crossX = padding + clampedIndex * step;
-
-            // 垂直線
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(crossX, padding);
-            ctx.lineTo(crossX, height - padding);
-            ctx.stroke();
-
-            // 水平線
-            ctx.beginPath();
-            ctx.moveTo(padding, mouseY);
-            ctx.lineTo(width - padding, mouseY);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // 數據提示框
-            const trade = sorted[clampedIndex];
-            const value = values[clampedIndex];
-            const y = height - padding - ((value - minVal) / range) * (height - padding * 2);
-
-            // 高亮數據點
-            ctx.beginPath();
-            ctx.arc(crossX, y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = '#3b82f6';
-            ctx.fill();
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // 提示框
-            const boxW = 120, boxH = 45;
-            let boxX = crossX + 10;
-            if (boxX + boxW > width - 10) boxX = crossX - boxW - 10;
-            let boxY = y - boxH / 2;
-            if (boxY < 5) boxY = 5;
-            if (boxY + boxH > height - 5) boxY = height - boxH - 5;
-
-            ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
-            ctx.fillRect(boxX, boxY, boxW, boxH);
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(boxX, boxY, boxW, boxH);
-
-            ctx.fillStyle = '#f8fafc';
-            ctx.font = 'bold 12px sans-serif';
-            ctx.textAlign = 'left';
-            ctx.fillText(`#${clampedIndex + 1}`, boxX + 8, boxY + 16);
-            ctx.fillStyle = value >= (sorted[0]?.balance || 0) ? '#22c55e' : '#ef4444';
-            ctx.fillText(`$${value.toFixed(2)}`, boxX + 8, boxY + 34);
-        }
-
-        // UI 更新
+        // ═══ UI Update ═══
         function updateUI(data) {
-            const el = (id) => document.getElementById(id);
-            const setConn = (text, cls) => { el('connection-status').textContent = text; el('connection-status').className = 'status-badge ' + cls; };
+            const el = id => document.getElementById(id);
+
+            // Connection status
             if (!socketConnected) {
-                if (data.connected && data.authenticated) setConn('🟢 已連線', 'status-connected');
-                else if (data.connected) setConn('🟡 連線中...', 'status-watching');
-                else setConn('🔴 未連線', 'status-disconnected');
+                const cp = el('conn-pill');
+                if (data.connected && data.authenticated) {
+                    cp.className = 'pill pill-green'; cp.innerHTML = '<span class="pill-dot"></span>已連線';
+                } else if (data.connected) {
+                    cp.className = 'pill pill-amber'; cp.innerHTML = '<span class="pill-dot"></span>連線中...';
+                } else {
+                    cp.className = 'pill pill-red'; cp.innerHTML = '<span class="pill-dot"></span>未連線';
+                }
             }
 
-            el('watching-status').textContent = data.isWatching ? '👁️ 盯盤中' : '💤 待機';
-            el('watching-status').className = 'status-badge ' + (data.isWatching ? 'status-watching' : 'status-idle');
-            el('trade-status').textContent = data.todayTradeDone ? '✅ 今日已交易' : '⏳ 等待進場';
-            el('trade-status').className = 'status-badge ' + (data.todayTradeDone ? 'status-connected' : 'status-idle');
-
-            // 暫停狀態
-            const pauseStatusEl = el('pause-status');
-            const pauseBtn = el('pause-btn');
-            if (data.tradingPaused) {
-                pauseStatusEl.style.display = '';
-                pauseStatusEl.className = 'status-badge status-paused';
-                pauseStatusEl.textContent = '⏸️ 交易暫停';
-                pauseBtn.textContent = '▶️ 繼續交易';
-                pauseBtn.className = 'btn-success';
+            // Watch
+            const wp = el('watch-pill');
+            if (data.isWatching) {
+                wp.className = 'pill pill-blue'; wp.innerHTML = '<span class="pill-dot"></span>盯盤中';
             } else {
-                pauseStatusEl.style.display = 'none';
-                pauseBtn.textContent = '⏸️ 暫停交易';
-                pauseBtn.className = 'btn-pause';
+                wp.className = 'pill pill-muted'; wp.innerHTML = '<span class="pill-dot"></span>待機';
             }
 
+            // Trade
+            const tp = el('trade-pill');
+            if (data.todayTradeDone) {
+                tp.className = 'pill pill-green'; tp.innerHTML = '<span class="pill-dot"></span>今日已交易';
+            } else {
+                tp.className = 'pill pill-muted'; tp.innerHTML = '<span class="pill-dot"></span>等待進場';
+            }
+
+            // Pause
+            const pp = el('pause-pill');
+            const pb = el('pause-btn');
+            if (data.tradingPaused) {
+                pp.style.display = ''; pb.textContent = '▶️ 繼續交易'; pb.className = 'btn btn-green';
+            } else {
+                pp.style.display = 'none'; pb.textContent = '⏸️ 暫停交易'; pb.className = 'btn btn-orange';
+            }
+
+            // Price with flash animation
             const curPrice = data.currentPrice ? data.currentPrice / PRICE_MULTIPLIER : null;
             const openPrice = data.openPrice ? data.openPrice / PRICE_MULTIPLIER : null;
-            el('current-price').textContent = curPrice ? curPrice.toFixed(2) : '--';
-            el('open-price').textContent = openPrice ? openPrice.toFixed(2) : '--';
-            if (curPrice && openPrice) {
-                const diff = curPrice - openPrice;
-                el('price-diff').textContent = (diff > 0 ? '+' : '') + diff.toFixed(2);
-                el('price-diff').className = diff > 0 ? 'text-green' : (diff < 0 ? 'text-red' : '');
+            const priceEl = el('current-price');
+
+            if (curPrice) {
+                priceEl.textContent = curPrice.toFixed(2);
+                if (lastPrice !== null && curPrice !== lastPrice) {
+                    priceEl.classList.remove('price-flash-up', 'price-flash-down');
+                    void priceEl.offsetWidth; // force reflow
+                    priceEl.classList.add(curPrice > lastPrice ? 'price-flash-up' : 'price-flash-down');
+                }
+                lastPrice = curPrice;
             }
 
+            el('open-price').textContent = openPrice ? openPrice.toFixed(2) : '--';
+
+            if (curPrice && openPrice) {
+                const diff = curPrice - openPrice;
+                const diffEl = el('price-diff');
+                diffEl.textContent = (diff > 0 ? '+' : '') + diff.toFixed(2);
+                diffEl.style.color = diff > 0 ? 'var(--green)' : (diff < 0 ? 'var(--red)' : 'var(--text-primary)');
+            }
+
+            // Bid/Ask
+            if (data.bid) el('bid-price').textContent = (data.bid / PRICE_MULTIPLIER).toFixed(2);
+            if (data.ask) el('ask-price').textContent = (data.ask / PRICE_MULTIPLIER).toFixed(2);
+
+            // Stats
             el('balance').textContent = '$' + (data.balance || 0).toFixed(2);
             el('equity').textContent = '$' + (data.equity || data.balance || 0).toFixed(2);
             el('usedMargin').textContent = '$' + (data.usedMargin || 0).toFixed(2);
@@ -743,52 +894,80 @@
             el('leverage').textContent = data.leverage ? '1:' + data.leverage : '--';
 
             const eqEl = el('equity');
-            eqEl.className = 'stat-value' + (data.unrealizedPnL > 0 ? ' text-green' : (data.unrealizedPnL < 0 ? ' text-red' : ''));
+            eqEl.className = 'stat-value' + (data.unrealizedPnL > 0 ? ' c-green' : (data.unrealizedPnL < 0 ? ' c-red' : ''));
 
-            if (data.config && !window.configLoaded) {
+            // Config (first load only)
+            if (data.config && !window._cfgLoaded) {
                 ['entryOffset', 'longTP', 'shortTP', 'longSL', 'shortSL', 'lotSize', 'minsAfterOpen', 'baselineOffsetMinutes'].forEach(f => {
                     const e = el('cfg-' + f); if (e && data.config[f] !== undefined) e.value = data.config[f];
                 });
-                window.configLoaded = true;
+                window._cfgLoaded = true;
             }
 
-            updatePositionsList(data.positions || []);
-            if (data.logs?.length) { el('logs').innerHTML = data.logs.map(l => `<div>${l}</div>`).join(''); }
-            if (data.trades) updateEquityChart(data.trades);
+            updatePositions(data.positions || []);
+            if (data.logs?.length) el('logs').innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
+            if (data.trades) drawChart(data.trades);
         }
 
-        const throttledUpdate = throttle(updateUI, 100);
+        const throttledUI = throttle(updateUI, 100);
 
-        // Socket.IO
-        function initSocketIO() {
-            const script = document.createElement('script');
-            script.src = '/socket.io/socket.io.js';
-            script.onload = () => {
+        // ═══ Socket.IO ═══
+        function initSocket() {
+            const s = document.createElement('script');
+            s.src = '/socket.io/socket.io.js';
+            s.onload = () => {
                 socket = io();
-                socket.on('connect', () => { socketConnected = true; document.getElementById('connection-status').textContent = '🟢 即時連線'; document.getElementById('connection-status').className = 'status-badge status-connected'; });
+                socket.on('connect', () => {
+                    socketConnected = true;
+                    const cp = document.getElementById('conn-pill');
+                    cp.className = 'pill pill-green';
+                    cp.innerHTML = '<span class="pill-dot"></span>即時連線';
+                });
                 socket.on('disconnect', () => { socketConnected = false; });
                 socket.on('initial-state', updateUI);
-                socket.on('realtime-update', throttledUpdate);
-                socket.on('account-update', d => { if (d.balance !== undefined) document.getElementById('balance').textContent = '$' + d.balance.toFixed(2); });
-                socket.on('positions-update', d => updatePositionsList(d.positions || []));
-                socket.on('new-log', msg => { const c = document.getElementById('logs'); const div = document.createElement('div'); div.textContent = msg; c.insertBefore(div, c.firstChild); while (c.children.length > 50) c.removeChild(c.lastChild); });
+                socket.on('realtime-update', throttledUI);
+                socket.on('account-update', d => {
+                    if (d.balance !== undefined) document.getElementById('balance').textContent = '$' + d.balance.toFixed(2);
+                });
+                socket.on('positions-update', d => updatePositions(d.positions || []));
+                socket.on('new-log', msg => {
+                    const c = document.getElementById('logs');
+                    const div = document.createElement('div');
+                    div.textContent = msg;
+                    c.insertBefore(div, c.firstChild);
+                    while (c.children.length > 80) c.removeChild(c.lastChild);
+                });
             };
-            document.head.appendChild(script);
+            document.head.appendChild(s);
         }
 
-        // API
+        // ═══ API ═══
         async function fetchStatus() {
             if (socketConnected && Date.now() - lastLogFetch < 10000) return;
             lastLogFetch = Date.now();
-            try { const res = await fetch(API_URL + '/status'); const data = await res.json(); if (socketConnected) { if (data.logs) document.getElementById('logs').innerHTML = data.logs.map(l => `<div>${l}</div>`).join(''); } else updateUI(data); } catch (e) { console.debug('fetchStatus 忽略:', e.message); }
+            try {
+                const res = await fetch(API_URL + '/status');
+                const data = await res.json();
+                if (socketConnected) {
+                    if (data.logs) document.getElementById('logs').innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
+                } else {
+                    updateUI(data);
+                }
+            } catch (e) { /* ignore */ }
         }
 
         async function doAction(action, config = null) {
             try {
-                const body = { action }; if (config) body.config = config;
-                const res = await fetch(API_URL + '/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const body = { action };
+                if (config) body.config = config;
+                const res = await fetch(API_URL + '/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
                 const data = await res.json();
-                if (data.success) updateUI(data.state); else alert('操作失敗: ' + (data.error || data.message || '未知錯誤'));
+                if (data.success) updateUI(data.state);
+                else alert('操作失敗: ' + (data.error || data.message || '未知錯誤'));
             } catch (e) { alert('請求失敗: ' + e.message); }
         }
 
@@ -796,13 +975,43 @@
         function togglePause() { doAction('togglePause'); }
         function resetDaily() { if (confirm('確定要重置今日交易狀態嗎？')) doAction('reset'); }
         function closeAllPositions() { if (confirm('⚠️ 確定要緊急平倉所有持倉嗎？')) doAction('closePositions'); }
-        async function fetchOpenPrice() { const res = await fetch(API_URL + '/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'fetchOpenPrice' }) }); const data = await res.json(); if (data.success) { alert('✅ 基準點已取得'); updateUI(data.state); } else alert('❌ ' + (data.message || '取得基準點失敗')); }
-        async function closePosition(id) { if (!confirm(`確定要平倉持倉 ID: ${id} 嗎？`)) return; try { const res = await fetch(API_URL + '/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'closePosition', positionId: id }) }); const data = await res.json(); if (data.success) updateUI(data.state); else alert('平倉失敗: ' + (data.error || '未知錯誤')); } catch (e) { alert('請求失敗: ' + e.message); } }
-        function saveConfig() { const cfg = {};['entryOffset', 'longTP', 'shortTP', 'longSL', 'shortSL', 'lotSize', 'minsAfterOpen', 'baselineOffsetMinutes'].forEach(f => cfg[f] = document.getElementById('cfg-' + f).value); doAction('updateConfig', cfg); alert('✅ 策略參數已儲存'); }
 
-        // 初始化
-        initSocketIO();
-        initEquityChart();
+        async function fetchOpenPrice() {
+            const res = await fetch(API_URL + '/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'fetchOpenPrice' })
+            });
+            const data = await res.json();
+            if (data.success) { alert('✅ 基準點已取得'); updateUI(data.state); }
+            else alert('❌ ' + (data.message || '取得基準點失敗'));
+        }
+
+        async function closePosition(id) {
+            if (!confirm(`確定要平倉持倉 ID: ${id} 嗎？`)) return;
+            try {
+                const res = await fetch(API_URL + '/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'closePosition', positionId: id })
+                });
+                const data = await res.json();
+                if (data.success) updateUI(data.state);
+                else alert('平倉失敗: ' + (data.error || '未知錯誤'));
+            } catch (e) { alert('請求失敗: ' + e.message); }
+        }
+
+        function saveConfig() {
+            const cfg = {};
+            ['entryOffset', 'longTP', 'shortTP', 'longSL', 'shortSL', 'lotSize', 'minsAfterOpen', 'baselineOffsetMinutes']
+                .forEach(f => cfg[f] = document.getElementById('cfg-' + f).value);
+            doAction('updateConfig', cfg);
+            alert('✅ 策略參數已儲存');
+        }
+
+        // ═══ Init ═══
+        initSocket();
+        initChart();
         fetchStatus();
         setInterval(fetchStatus, 2000);
     </script>

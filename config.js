@@ -61,7 +61,7 @@ module.exports = {
 
     // 市場時間設定 (CME Globex)
     market: {
-        symbol: 'US30', // cTrader symbol name
+        symbol: getEnvString('CTRADER_SYMBOL', 'US30'), // cTrader symbol name (可透過 .env 設定)
         minsAfterOpen: getEnvNumber('MINS_AFTER_OPEN', 1), // 開盤後幾分鐘開始盯盤
         baselineOffsetMinutes: getEnvNumber('BASELINE_OFFSET_MINUTES', 0), // 使用開盤後幾分鐘的價格作為基準點 (0=開盤時)
 
