@@ -20,7 +20,7 @@
 ## 📁 專案結構
 
 ```
-NAS100_Bot/
+cTrader_Bot/
 ├── trading-bot.js      # 主程式入口 + Express Dashboard
 ├── ExecutionEngine.js  # 交易執行引擎
 ├── CTraderConnection.js# cTrader API 連線管理
@@ -49,8 +49,8 @@ NAS100_Bot/
 ### 安裝
 
 ```bash
-git clone https://github.com/kevin930321/NAS100_Bot.git
-cd NAS100_Bot
+git clone <your-repository-url>
+cd cTrader_Bot
 npm install
 ```
 
@@ -66,6 +66,7 @@ CTRADER_ACCESS_TOKEN=你的AccessToken
 CTRADER_REFRESH_TOKEN=你的RefreshToken
 CTRADER_ACCOUNT_ID=你的帳戶ID
 CTRADER_MODE=demo  # demo 或 live
+CTRADER_SYMBOL=US30
 
 # MongoDB
 MONGODB_URI=mongodb+srv://...連線字串...
@@ -87,7 +88,7 @@ DISCORD_ENABLED=false
 npm run dev
 
 # 生產模式 (PM2)
-pm2 start trading-bot.js --name nas100-bot
+pm2 start trading-bot.js --name us30-bot
 pm2 save
 ```
 
@@ -136,7 +137,7 @@ Google Cloud 提供**終身免費**的 e2-micro VM，非常適合部署此交易
 
 1. 前往 [Google Cloud Console](https://console.cloud.google.com/)
 2. 點擊頂部的專案選擇器 → **新增專案**
-3. 專案名稱：`nas100-bot`
+3. 專案名稱：`us30-bot`
 4. 點擊**建立**
 
 ### Step 2：建立 VM 執行個體
@@ -148,7 +149,7 @@ Google Cloud 提供**終身免費**的 e2-micro VM，非常適合部署此交易
 
 | 設定項目 | 值 |
 |---------|-----|
-| 名稱 | `nas100-bot` |
+| 名稱 | `us30-bot` |
 | 區域 | `us-west1 (Oregon)` ← 離台灣最近 |
 | 機器類型 | `e2-micro (2 vCPU, 1GB)` ← **必須選這個！** |
 | 開機硬碟 | Ubuntu 22.04 LTS, **20-30GB 標準永久磁碟** (不要選 SSD) |
@@ -184,8 +185,8 @@ pm2 -v
 
 ```bash
 # 複製程式碼
-git clone https://github.com/kevin930321/NAS100_Bot.git
-cd NAS100_Bot
+git clone <your-repository-url>
+cd cTrader_Bot
 npm install
 
 # 建立環境變數
@@ -198,14 +199,14 @@ nano .env
 
 ```bash
 # 使用 PM2 啟動
-pm2 start trading-bot.js --name nas100-bot
+pm2 start trading-bot.js --name us30-bot
 
 # 設定開機自動啟動
 pm2 startup
 pm2 save
 
 # 查看日誌
-pm2 logs nas100-bot
+pm2 logs us30-bot
 ```
 
 ### Step 6：設定防火牆
@@ -224,12 +225,12 @@ pm2 logs nas100-bot
 
 ```bash
 pm2 status              # 查看狀態
-pm2 logs nas100-bot     # 查看日誌
-pm2 restart nas100-bot  # 重啟
-pm2 stop nas100-bot     # 停止
+pm2 logs us30-bot       # 查看日誌
+pm2 restart us30-bot    # 重啟
+pm2 stop us30-bot       # 停止
 
 # 更新程式碼
-git pull && npm install && pm2 restart nas100-bot
+git pull && npm install && pm2 restart us30-bot
 ```
 
 ---

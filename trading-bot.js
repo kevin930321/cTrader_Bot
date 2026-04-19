@@ -572,7 +572,7 @@ const basicAuth = (req, res, next) => {
         return next();
     }
 
-    res.set("WWW-Authenticate", 'Basic realm="NAS100 Dashboard"');
+    res.set("WWW-Authenticate", 'Basic realm="US30 Dashboard"');
     return res.status(401).send("帳號或密碼錯誤");
 };
 
