@@ -635,7 +635,7 @@ class ExecutionEngine extends EventEmitter {
         const marketConfig = isUsDst(now) ? this.config.market.summer : this.config.market.winter;
 
         const openMinutes = marketConfig.openHour * 60 + marketConfig.openMinute;
-        const closeMinutes = openMinutes - 90;
+        const closeMinutes = isUsDst(now) ? (5 * 60) : (6 * 60);
 
         if (currentMinutes >= openMinutes) {
             return true;
