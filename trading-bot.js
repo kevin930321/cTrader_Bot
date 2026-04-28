@@ -13,7 +13,7 @@ const config = require('./config');
 const CTraderConnection = require('./CTraderConnection');
 const ExecutionEngine = require('./ExecutionEngine');
 const db = require('./db');
-const { isUsDst, rawToRealPrice } = require('./utils');
+const { isUsDst } = require('./utils');
 const TokenManager = require('./tokenManager');
 
 class TradingBot {
@@ -22,7 +22,6 @@ class TradingBot {
         this.engine = null;
         this.tokenManager = null;
         this.io = null;
-        this.lastDate = null;
         this.lastResetDate = null;
         console.log('🤖 US30 真實交易機器人初始化...');
     }
@@ -51,16 +50,6 @@ class TradingBot {
 
             // 1. 建立 cTrader 連線
             this.connection = new CTraderConnection(config, this.tokenManager);
-
-            // 自動重連後的認證邏輯
-            this.connection.on('app-auth-success', async () => {
-                console.log('🔄 Application Auth 成功，正在進行 Account Auth...');
-                try {
-                    await this.connection.sendAccountAuth();
-                } catch (error) {
-                    console.error('❌ Account Auth 失敗:', error.message);
-                }
-            });
 
             await this.connection.connect();
 
@@ -144,9 +133,8 @@ class TradingBot {
                         const pId = typeof p.positionId === 'object' ? p.positionId.toNumber() : parseInt(p.positionId);
                         return pId == positionId;
                     });
-                    if (pos && pos.stopLoss) {
-                        // ProtoOAPosition stopLoss is raw? Yes.
-                        currentSl = rawToRealPrice(pos.stopLoss);
+                    if (pos && pos.stopLoss !== undefined) {
+                        currentSl = pos.stopLoss;
                     }
                 }
 
