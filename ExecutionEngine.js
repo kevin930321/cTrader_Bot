@@ -4,7 +4,7 @@
  */
 
 const EventEmitter = require('events');
-const { convertLongValue, rawToRealPrice, isUsDst, API_PRICE_MULTIPLIER } = require('./utils');
+const { convertLongValue, rawToRealPrice, realToRawPrice, getTaipeiTime, isUsDst, API_PRICE_MULTIPLIER, TAIPEI_OFFSET_MS } = require('./utils');
 const { logAudit } = require('./logger');
 
 
@@ -61,27 +61,33 @@ class ExecutionEngine extends EventEmitter {
         });
     }
 
+    getMarketConfig(date = new Date()) {
+        const isDst = isUsDst(date);
+        return isDst ? this.config.market.summer : this.config.market.winter;
+    }
+
+
     /** 初始化：從資料庫載入狀態 */
     async initialize() {
         try {
             const state = await this.db.loadState();
             if (state) {
-                this.wins = state.wins ?? 0;
-                this.losses = state.losses ?? 0;
-                this.trades = state.trades ?? [];
-                this.totalProfit = state.totalProfit ?? 0;
-                this.lastReportWins = state.lastReportWins ?? 0;
-                this.lastReportLosses = state.lastReportLosses ?? 0;
-                this.lastReportProfit = state.lastReportProfit ?? 0;
-                this.todayTradeDone = state.todayTradeDone ?? false;
-                this.lastResetDate = state.lastResetDate ?? null; // 恢復重置日期
+                this.wins = state.wins || 0;
+                this.losses = state.losses || 0;
+                this.trades = state.trades || [];
+                this.totalProfit = state.totalProfit || 0;
+                this.lastReportWins = state.lastReportWins || 0;
+                this.lastReportLosses = state.lastReportLosses || 0;
+                this.lastReportProfit = state.lastReportProfit || 0;
+                this.todayTradeDone = state.todayTradeDone || false;
+                this.lastResetDate = state.lastResetDate || null; // 恢復重置日期
                 if (state.config) {
-                    if (state.config.entryOffset !== undefined) this.entryOffset = state.config.entryOffset;
-                    if (state.config.longTP !== undefined) this.longTP = state.config.longTP;
-                    if (state.config.shortTP !== undefined) this.shortTP = state.config.shortTP;
-                    if (state.config.longSL !== undefined) this.longSL = state.config.longSL;
-                    if (state.config.shortSL !== undefined) this.shortSL = state.config.shortSL;
-                    if (state.config.lotSize !== undefined) this.lotSize = state.config.lotSize;
+                    this.entryOffset = state.config.entryOffset || this.entryOffset;
+                    this.longTP = state.config.longTP || this.longTP;
+                    this.shortTP = state.config.shortTP || this.shortTP;
+                    this.longSL = state.config.longSL || this.longSL;
+                    this.shortSL = state.config.shortSL || this.shortSL;
+                    this.lotSize = state.config.lotSize || this.lotSize;
                     if (state.config.minsAfterOpen !== undefined) this.minsAfterOpen = state.config.minsAfterOpen;
                     if (state.config.baselineOffsetMinutes !== undefined) this.baselineOffsetMinutes = state.config.baselineOffsetMinutes;
                     console.log('⚙️ 策略參數已從資料庫恢復');
@@ -119,14 +125,14 @@ class ExecutionEngine extends EventEmitter {
                 const positionId = convertLongValue(p.positionId);
                 const rawVolume = p.tradeData?.volume ?? p.volume;
                 const volume = convertLongValue(rawVolume);
-                const entryPrice = p.price ?? null;
+                const rawPrice = convertLongValue(p.price);
                 const openTimestamp = convertLongValue(p.tradeData.openTimestamp);
                 const volumeInLots = volume ? volume / VOLUME_DIVISOR : null;
 
                 return {
                     id: positionId,
                     type: isBuy ? 'long' : 'short',
-                    entryPrice: entryPrice,
+                    entryPrice: rawPrice,
                     volume: volumeInLots,
                     openTime: new Date(openTimestamp)
                 };
@@ -621,25 +627,35 @@ class ExecutionEngine extends EventEmitter {
     }
 
     /**
-     * 檢查是否在交易時段內（台北時間）
-     * 交易時段跨越午夜：開盤時間 ~ 23:59 或 00:00 ~ 收盤時間
-     * 開盤/收盤時間由 config.market.summer / config.market.winter 設定
+     * 檢查是否在交易時段內
+     * 交易時段：台北時間 07:01 ~ 隔天 06:00 (對應美股交易時間)
+     * 冬令: 開盤 07:30，收盤 06:00
+     * 夏令: 開盤 06:30，收盤 05:00
      */
     isWithinTradingHours() {
         const now = new Date();
+
+        // 使用台北時區 (UTC+8) 計算時間，避免伺服器時區問題
         const taipeiTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
         const hour = taipeiTime.getHours();
         const minute = taipeiTime.getMinutes();
         const currentMinutes = hour * 60 + minute;
-        const marketConfig = isUsDst(now) ? this.config.market.summer : this.config.market.winter;
 
-        const openMinutes = marketConfig.openHour * 60 + marketConfig.openMinute;
-        const closeMinutes = marketConfig.closeHour * 60 + marketConfig.closeMinute;
+        // 判斷夏令/冬令
+        const isDst = isUsDst(now);
 
-        // 交易時段跨越午夜：開盤後到 23:59 或 00:00 到收盤前
+        // 冬令時間：台北時間 07:30 - 隔天 06:00 (即 07:30-23:59 和 00:00-06:00)
+        // 夏令時間：台北時間 06:30 - 隔天 05:00 (即 06:30-23:59 和 00:00-05:00)
+        const openMinutes = isDst ? (6 * 60 + 30) : (7 * 60 + 30);  // 夏令 06:30，冬令 07:30
+        const closeMinutes = isDst ? (5 * 60) : (6 * 60);           // 夏令 05:00，冬令 06:00
+
+        // 交易時段跨越午夜
+        // 有效時段：開盤時間 ~ 23:59 或 00:00 ~ 收盤時間
         if (currentMinutes >= openMinutes) {
+            // 開盤後 (07:30+ 或 06:30+)
             return true;
         } else if (currentMinutes < closeMinutes) {
+            // 隔天未收盤前 (00:00 ~ 06:00 或 00:00 ~ 05:00)
             return true;
         }
 
@@ -683,24 +699,28 @@ class ExecutionEngine extends EventEmitter {
         this.isPlacingOrder = true;
 
         try {
+            const tradeType = type === 'long' ? 'BUY' : 'SELL';
+
             // 取得 Symbol 資訊以計算 Volume
             const symbolData = await this.getSymbolInfo(this.config.market.symbol);
             if (!symbolData) throw new Error('無法取得 Symbol 資訊');
 
-            let volume = Math.round(this.lotSize * 100);
-            const minVolume = convertLongValue(symbolData.minVolume) || 1;
-            const stepVolume = convertLongValue(symbolData.stepVolume) || 1;
+            // cTrader Volume 計算：
+            // - cTrader volume 單位: 1 lot = 100 volume units (centilots)
+            // - 所以 0.1 lots = 10 volume units
+            // - 最小 volume 通常是 100 (= 0.01 lots) 或根據 broker 設定
 
+            // 計算 volume (lots * 100)
+            let volume = Math.round(this.lotSize * 100);
+
+            // 最小量檢查 (0.01 lots = 1 volume, 但通常最小是 0.1 lots = 10 volume)
+            const minVolume = 10; // 0.1 lots = 10 volume units (大部分 broker 的最小)
             if (volume < minVolume) {
                 console.warn(`⚠️ 計算出的交易量 (${volume}) 小於最小限制 (${minVolume})，已自動修正為最小量。`);
                 volume = minVolume;
             }
 
-            if (stepVolume > 0) {
-                volume = Math.ceil(volume / stepVolume) * stepVolume;
-            }
-
-            console.log(`📊 下單量: ${this.lotSize} lots = ${volume} volume units (min=${minVolume}, step=${stepVolume})`);
+            console.log(`📊 下單量: ${this.lotSize} lots = ${volume} volume units`);
 
             // 計算基於基準點的 TP/SL 絕對價格
             // 策略：TP/SL 是相對於「基準點」而非「成交價」
@@ -987,30 +1007,34 @@ class ExecutionEngine extends EventEmitter {
             return { isHoliday: false };
         }
 
-        const tzNow = this.getDatePartsInTimeZone(now, timezone || 'UTC');
+        // 計算當前日期 (距離 1970/1/1 的天數)
         const msPerDay = 86400000;
-        const todayDays = Math.floor(Date.UTC(tzNow.year, tzNow.month - 1, tzNow.day) / msPerDay);
+        const todayDays = Math.floor(now.getTime() / msPerDay);
 
         for (const holiday of holidays) {
+            // holidayDate 是距離 1970/1/1 的天數
             const holidayDays = typeof holiday.holidayDate === 'number'
                 ? holiday.holidayDate
                 : (holiday.holidayDate.toNumber ? holiday.holidayDate.toNumber() : Number(holiday.holidayDate));
 
+            // 檢查是否為今天
             if (holidayDays === todayDays) {
+                // 如果有指定時間範圍，檢查當前時間是否在範圍內
                 if (holiday.startSecond !== undefined && holiday.endSecond !== undefined) {
-                    const secondsFromMidnight = tzNow.hour * 3600 + tzNow.minute * 60 + tzNow.second;
+                    const secondsFromMidnight = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
                     if (secondsFromMidnight >= holiday.startSecond && secondsFromMidnight < holiday.endSecond) {
                         return { isHoliday: true, holidayName: holiday.name };
                     }
                 } else {
+                    // 全天假日
                     return { isHoliday: true, holidayName: holiday.name };
                 }
             }
 
+            // 檢查年度重複假日
             if (holiday.isRecurring) {
                 const holidayDate = new Date(holidayDays * msPerDay);
-                const recurringParts = this.getDatePartsInTimeZone(holidayDate, timezone || 'UTC');
-                if (tzNow.month === recurringParts.month && tzNow.day === recurringParts.day) {
+                if (now.getMonth() === holidayDate.getMonth() && now.getDate() === holidayDate.getDate()) {
                     return { isHoliday: true, holidayName: holiday.name };
                 }
             }
@@ -1024,15 +1048,17 @@ class ExecutionEngine extends EventEmitter {
      */
     checkTradingSchedule(schedule, timezone, now) {
         if (!schedule || schedule.length === 0) {
+            // 沒有時段資訊，預設為開放
             return { isWithinSchedule: true };
         }
 
-        const tzNow = this.getDatePartsInTimeZone(now, timezone || 'UTC');
+        // 計算從本週日 00:00 開始的秒數
+        const dayOfWeek = now.getDay(); // 0 = Sunday
         const secondsFromSunday =
-            tzNow.weekday * 86400 +
-            tzNow.hour * 3600 +
-            tzNow.minute * 60 +
-            tzNow.second;
+            dayOfWeek * 86400 +
+            now.getHours() * 3600 +
+            now.getMinutes() * 60 +
+            now.getSeconds();
 
         for (const interval of schedule) {
             const start = typeof interval.startSecond === 'number'
@@ -1057,6 +1083,8 @@ class ExecutionEngine extends EventEmitter {
      * 當到達基準點時間時，會先清空目前的基準價再重新獲取
      */
     async fetchAndSetOpenPrice() {
+        const POLL_INTERVAL_MS = 30000; // 30 秒
+
         if (this.isFetchingOpenPrice) return false;
 
         this.isFetchingOpenPrice = true;
@@ -1124,7 +1152,7 @@ class ExecutionEngine extends EventEmitter {
      * 啟動基準價輪詢（每 30 秒獲取一次）
      */
     startBaselinePricePolling() {
-        const pollIntervalMs = 30000; // 30 秒
+        const POLL_INTERVAL_MS = 30000; // 30 秒
 
         // 如果已經在輪詢中，不重複啟動
         if (this.baselinePricePollingInterval) {
@@ -1139,35 +1167,7 @@ class ExecutionEngine extends EventEmitter {
         // 每 30 秒執行一次 (只要市場開盤就持續輪詢)
         this.baselinePricePollingInterval = setInterval(async () => {
             await this.fetchAndSetOpenPrice();
-        }, pollIntervalMs);
-    }
-
-    getDatePartsInTimeZone(date, timeZone) {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            weekday: 'short',
-            hour12: false
-        });
-
-        const parts = formatter.formatToParts(date);
-        const map = Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
-        const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-
-        return {
-            year: parseInt(map.year, 10),
-            month: parseInt(map.month, 10),
-            day: parseInt(map.day, 10),
-            hour: parseInt(map.hour, 10),
-            minute: parseInt(map.minute, 10),
-            second: parseInt(map.second, 10),
-            weekday: weekdayMap[map.weekday] ?? 0
-        };
+        }, POLL_INTERVAL_MS);
     }
 
     /**
